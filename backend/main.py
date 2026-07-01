@@ -17,11 +17,13 @@ import os
 import logging
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+import google.generativeai as genai
 
 import db
 import bq as bq_module
 from forecasting import forecast_zone, detect_stress
 from reasoning import generate_reasoning_and_nudges
+from email_service import send_nudge_email, send_utility_alert, SMTP_USER
 from models import (
     ZoneOut,
     ForecastPoint,
@@ -30,10 +32,12 @@ from models import (
     AdvanceResponse,
     ZoneAdvanceResult,
     SeedResponse,
+    ChatRequest,
+    ChatResponse,
 )
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("gridsense")
+logger = logging.getLogger("voltrix")
 
 app = FastAPI(
     title="GridSense API",
@@ -59,12 +63,14 @@ app.add_middleware(
 
 # ─── Health ───────────────────────────────────────────────────────────────────
 
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "gridsense-api"}
 
 
 # ─── Zones ────────────────────────────────────────────────────────────────────
+
 
 @app.get("/zones", response_model=list[ZoneOut])
 def list_zones():
@@ -116,6 +122,7 @@ def zone_load_history(bq_zone_id: str, days: int = 3):
 
 # ─── Stress events ────────────────────────────────────────────────────────────
 
+
 @app.get("/stress-events", response_model=list[StressEventOut])
 def list_stress_events(limit: int = 20):
     """Return the most recent stress events with zone name joined."""
@@ -152,6 +159,7 @@ def get_stress_event(event_id: str):
 
 # ─── Recommendations ──────────────────────────────────────────────────────────
 
+
 @app.get("/recommendations", response_model=list[RecommendationOut])
 def list_recommendations(limit: int = 50, unsent_only: bool = False):
     """Return recommendations, optionally filtered to only unsent ones."""
@@ -164,7 +172,9 @@ def list_recommendations(limit: int = 50, unsent_only: bool = False):
     return db.fetch_all(query, params)
 
 
-@app.get("/stress-events/{event_id}/recommendations", response_model=list[RecommendationOut])
+@app.get(
+    "/stress-events/{event_id}/recommendations", response_model=list[RecommendationOut]
+)
 def get_event_recommendations(event_id: str):
     """Return all recommendations for a specific stress event (for the drill-down view)."""
     return db.fetch_all(
@@ -173,16 +183,80 @@ def get_event_recommendations(event_id: str):
     )
 
 
-@app.post("/recommendations/{recommendation_id}/mark-sent")
-def mark_sent(recommendation_id: str):
+@app.post("/recommendations/{recommendation_id}/send")
+def send_recommendation(recommendation_id: str):
     """
-    Called by Shritama's Resend integration after an email is delivered.
+    Send a recommendation via email (SMTP).
+    For household nudges: fetches the household's email + name, sends citizen nudge.
+    For utility alerts: sends to configured ops email.
+    Marks recommendation as sent on success.
     """
-    db.mark_recommendation_sent(recommendation_id)
-    return {"ok": True}
+    try:
+        rec = db.fetch_one(
+            "SELECT * FROM recommendations WHERE id = %s",
+            (recommendation_id,),
+        )
+        if not rec:
+            raise HTTPException(status_code=404, detail="Recommendation not found")
+
+        target_type = rec["target_type"]
+
+        if target_type == "household":
+            if not rec["household_id"]:
+                return {"ok": False, "reason": "no household linked"}
+            household = db.fetch_one(
+                "SELECT email, name FROM households WHERE id = %s",
+                (rec["household_id"],),
+            )
+            if not household or not household.get("email"):
+                return {"ok": False, "reason": "no email on file"}
+            ok = send_nudge_email(
+                to_email=household["email"],
+                household_name=household["name"] or "Resident",
+                nudge_message=rec["message"] or "",
+                action_suggested=rec["action_suggested"] or "",
+            )
+            if not ok:
+                return {"ok": False, "reason": "email delivery failed"}
+            db.mark_recommendation_sent(recommendation_id)
+            return {"ok": True, "sent_to": household["email"]}
+
+        elif target_type == "utility":
+            ops_email = os.environ.get("VOLTRIX_OPS_EMAIL", SMTP_USER)
+            stress_event = db.fetch_one(
+                "SELECT z.name AS zone_name FROM stress_events se JOIN zones z ON z.id = se.zone_id WHERE se.id = %s",
+                (rec["stress_event_id"],),
+            )
+            zone_name = stress_event["zone_name"] if stress_event else "Unknown Zone"
+            reasoning_text = ""
+            if stress_event:
+                full_event = db.fetch_one(
+                    "SELECT reasoning FROM stress_events WHERE id = %s",
+                    (rec["stress_event_id"],),
+                )
+                reasoning_text = full_event.get("reasoning", "") if full_event else ""
+            ok = send_utility_alert(
+                to_email=ops_email,
+                zone_name=zone_name,
+                utility_action=rec["message"] or rec["action_suggested"] or "",
+                reasoning=reasoning_text,
+            )
+            if not ok:
+                return {"ok": False, "reason": "email delivery failed"}
+            db.mark_recommendation_sent(recommendation_id)
+            return {"ok": True, "sent_to": ops_email}
+
+        return {"ok": False, "reason": f"unknown target_type: {target_type}"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"send_recommendation failed: {e}", exc_info=True)
+        return {"ok": False, "reason": str(e)}
 
 
 # ─── Simulation state ─────────────────────────────────────────────────────────
+
 
 @app.get("/simulation/state")
 def get_simulation_state():
@@ -190,6 +264,7 @@ def get_simulation_state():
 
 
 # ─── /simulate/advance — the money endpoint ───────────────────────────────────
+
 
 @app.post("/simulate/advance", response_model=AdvanceResponse)
 def advance_simulation():
@@ -214,8 +289,8 @@ def advance_simulation():
 
     for zone in zones:
         bq_zone_id = zone["bq_zone_id"]
-        capacity   = float(zone["baseline_capacity_kw"])
-        zone_name  = zone["name"]
+        capacity = float(zone["baseline_capacity_kw"])
+        zone_name = zone["name"]
         logger.info(f"  → Processing {zone_name} ({bq_zone_id})")
 
         try:
@@ -233,11 +308,13 @@ def advance_simulation():
             stress = detect_stress(bq_zone_id, forecast_df, capacity)
 
             if not stress:
-                results.append(ZoneAdvanceResult(
-                    zone_name=zone_name,
-                    bq_zone_id=bq_zone_id,
-                    stress_detected=False,
-                ))
+                results.append(
+                    ZoneAdvanceResult(
+                        zone_name=zone_name,
+                        bq_zone_id=bq_zone_id,
+                        stress_detected=False,
+                    )
+                )
                 continue
 
             # Step 3: Get household context for Gemini
@@ -279,27 +356,32 @@ def advance_simulation():
                 action_suggested=ai_output.get("utility_action", ""),
             )
 
-            results.append(ZoneAdvanceResult(
-                zone_name=zone_name,
-                bq_zone_id=bq_zone_id,
-                stress_detected=True,
-                severity=stress["severity"],
-                reasoning=ai_output.get("reasoning"),
-                nudges_generated=len(nudges),
-            ))
+            results.append(
+                ZoneAdvanceResult(
+                    zone_name=zone_name,
+                    bq_zone_id=bq_zone_id,
+                    stress_detected=True,
+                    severity=stress["severity"],
+                    reasoning=ai_output.get("reasoning"),
+                    nudges_generated=len(nudges),
+                )
+            )
 
         except Exception as exc:
             logger.error(f"  ✗ Error processing {zone_name}: {exc}", exc_info=True)
-            results.append(ZoneAdvanceResult(
-                zone_name=zone_name,
-                bq_zone_id=bq_zone_id,
-                stress_detected=False,
-            ))
+            results.append(
+                ZoneAdvanceResult(
+                    zone_name=zone_name,
+                    bq_zone_id=bq_zone_id,
+                    stress_detected=False,
+                )
+            )
 
     return AdvanceResponse(new_day=new_day, results=results)
 
 
 # ─── Admin / one-time seed ────────────────────────────────────────────────────
+
 
 @app.post("/admin/seed-households", response_model=SeedResponse)
 def seed_households():
@@ -328,3 +410,117 @@ def reset_simulation():
     db.execute("DELETE FROM stress_events")
     db.execute("DELETE FROM forecasts")
     return {"ok": True, "message": "Simulation reset to day 1"}
+
+
+# ─── Chat ──────────────────────────────────────────────────────────────────────
+
+CHAT_MODEL_NAME = "gemini-2.0-flash"
+
+_chat_model: genai.GenerativeModel | None = None
+
+
+def _get_chat_model() -> genai.GenerativeModel:
+    global _chat_model
+    if _chat_model is None:
+        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+        _chat_model = genai.GenerativeModel(CHAT_MODEL_NAME)
+    return _chat_model
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(body: ChatRequest):
+    try:
+        if body.household_id:
+            household = db.fetch_one(
+                "SELECT * FROM households WHERE bq_household_id = %s",
+                (body.household_id,),
+            )
+
+            if household:
+                zone = db.fetch_one(
+                    "SELECT bq_zone_id, name FROM zones WHERE id = %s",
+                    (household["zone_id"],),
+                )
+                bq_zone_id = zone["bq_zone_id"] if zone else None
+                zone_name = zone["name"] if zone else "Unknown"
+
+                load_data = []
+                if bq_zone_id:
+                    load_data = bq_module.get_zone_load_for_chart(
+                        bq_zone_id, days_back=3
+                    )
+
+                stress_events = []
+                if zone:
+                    stress_events = db.fetch_all(
+                        """
+                        SELECT detected_at, severity, predicted_peak_kw, capacity_kw, reasoning
+                        FROM stress_events
+                        WHERE zone_id = %s
+                        ORDER BY detected_at DESC
+                        LIMIT 5
+                        """,
+                        (zone["id"],),
+                    )
+
+                recs = db.fetch_all(
+                    """
+                    SELECT target_type, message, action_suggested, sent
+                    FROM recommendations
+                    WHERE household_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 10
+                    """,
+                    (household["id"],),
+                )
+
+                context = f"""
+Household: {household["name"]} ({household["archetype"]})
+Zone: {zone_name}
+
+Recent load history (last 3 days, hourly):
+{load_data[:36] if load_data else "No data available"}
+
+Recent stress events:
+{stress_events[:3] if stress_events else "None"}
+
+Recommendations for this household:
+{recs[:5] if recs else "None"}
+"""
+            else:
+                context = f"Household {body.household_id} not found in the system."
+        else:
+            zones = db.fetch_all("SELECT * FROM zones ORDER BY name")
+            zone_summaries = []
+            for z in zones:
+                load = bq_module.get_zone_load_for_chart(z["bq_zone_id"], days_back=1)
+                stress_count = db.fetch_one(
+                    "SELECT COUNT(*) AS n FROM stress_events WHERE zone_id = %s",
+                    (z["id"],),
+                )
+                zone_summaries.append(
+                    {
+                        "name": z["name"],
+                        "capacity_kw": z["baseline_capacity_kw"],
+                        "households": z["household_count"],
+                        "stress_events": stress_count["n"] if stress_count else 0,
+                        "recent_load": load[-6:] if load else [],
+                    }
+                )
+            context = f"All zones summary:\n{zone_summaries}"
+
+        model = _get_chat_model()
+        system_prompt = "You are VOLTRIX, a citizen energy assistant. Answer only using the data provided. Be concise, specific, and friendly. Do not mention that you are an AI."
+        prompt = f"Question: {body.question}\n\nContext:\n{context}"
+
+        response = model.generate_content(
+            [system_prompt, prompt],
+            generation_config={"temperature": 0.3, "max_output_tokens": 300},
+        )
+        return ChatResponse(answer=response.text.strip())
+
+    except Exception as e:
+        logger.error(f"/chat error: {e}", exc_info=True)
+        return ChatResponse(
+            answer="Sorry, I couldn't process that right now. Please try again."
+        )

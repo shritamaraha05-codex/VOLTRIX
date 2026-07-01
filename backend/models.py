@@ -12,6 +12,7 @@ from datetime import datetime
 
 # ─── Zones ────────────────────────────────────────────────────────────────────
 
+
 class ZoneOut(BaseModel):
     id: str
     name: str
@@ -22,18 +23,20 @@ class ZoneOut(BaseModel):
 
 # ─── Forecasts ────────────────────────────────────────────────────────────────
 
+
 class ForecastPoint(BaseModel):
-    hour: str               # formatted label for Recharts
+    hour: str  # formatted label for Recharts
     actual: Optional[float]
     predicted: Optional[float]
 
 
 # ─── Stress Events ────────────────────────────────────────────────────────────
 
+
 class StressEventOut(BaseModel):
     id: str
     zone_id: str
-    zone_name: Optional[str] = None   # joined from zones table
+    zone_name: Optional[str] = None  # joined from zones table
     detected_at: str
     window_start: Optional[str]
     window_end: Optional[str]
@@ -44,6 +47,7 @@ class StressEventOut(BaseModel):
 
 
 # ─── Recommendations ──────────────────────────────────────────────────────────
+
 
 class RecommendationOut(BaseModel):
     id: str
@@ -59,6 +63,7 @@ class RecommendationOut(BaseModel):
 
 
 # ─── Simulation ───────────────────────────────────────────────────────────────
+
 
 class ZoneAdvanceResult(BaseModel):
     zone_name: str
@@ -76,6 +81,19 @@ class AdvanceResponse(BaseModel):
 
 # ─── Admin / seed ─────────────────────────────────────────────────────────────
 
+
 class SeedResponse(BaseModel):
     message: str
     households_seeded: Optional[int] = None
+
+
+# ─── Chat ──────────────────────────────────────────────────────────────────────
+
+
+class ChatRequest(BaseModel):
+    question: str
+    household_id: Optional[str] = None
+
+
+class ChatResponse(BaseModel):
+    answer: str
