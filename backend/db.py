@@ -4,7 +4,7 @@ Owner: Mrinmoy
 
 Uses psycopg2 with a simple connection-pool pattern.
 Set DATABASE_URL in your environment:
-  postgresql://user:password@host:5432/gridsense
+  postgresql://user:password@host:5432/postgres
 """
 
 import os
@@ -66,6 +66,7 @@ def _to_json_safe(rows: list[dict]) -> list[dict]:
 
 # ─── Core helpers ─────────────────────────────────────────────────────────────
 
+
 def fetch_all(query: str, params: tuple = ()) -> list[dict]:
     """Run a SELECT and return all rows as a list of plain dicts."""
     with get_conn() as conn:
@@ -111,6 +112,7 @@ def execute_many(query: str, params_list: list[tuple]) -> None:
 
 
 # ─── Domain-specific helpers (used by main.py) ────────────────────────────────
+
 
 def get_simulation_day() -> int:
     row = fetch_one("SELECT current_day FROM simulation_state WHERE id = 1")

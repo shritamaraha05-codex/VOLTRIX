@@ -1,15 +1,15 @@
 """
-main.py — GridSense FastAPI backend
+main.py — VOLTRIX FastAPI backend
 Owner: Mrinmoy
 
 Run locally:
     uvicorn main:app --reload --port 8000
 
 Environment variables required (set in .env or Cloud Run config):
-    DATABASE_URL          postgresql://user:pass@host:5432/gridsense
+    DATABASE_URL          postgresql://user:pass@host:5432/postgres
     GCP_PROJECT           your GCP project id
     GCP_LOCATION          us-central1 (default)
-    RESEND_API_KEY        your Resend key (optional — only needed for email delivery)
+    SMTP_*                SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD (for email delivery)
     GOOGLE_APPLICATION_CREDENTIALS   path to service-account JSON (local dev only)
 """
 
@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("voltrix")
 
 app = FastAPI(
-    title="GridSense API",
+    title="VOLTRIX API",
     version="1.0.0",
     description="AI-powered energy load forecasting and citizen nudge platform",
 )
@@ -66,7 +66,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "gridsense-api"}
+    return {"status": "ok", "service": "voltrix-api"}
 
 
 # ─── Zones ────────────────────────────────────────────────────────────────────
