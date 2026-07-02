@@ -1,4 +1,4 @@
--- GridSense — Postgres Operational Schema
+-- VOLTRIX — Postgres Operational Schema
 -- Owner: Mrinmoy
 -- Apply this to Cloud SQL (or Supabase if using that instead)
 -- Run once before starting the API

@@ -1,4 +1,4 @@
-# GridSense Backend — Dockerfile
+# VOLTRIX Backend — Dockerfile
 # Owner: Mrinmoy
 # Builds a production-ready image for Cloud Run deployment.
 

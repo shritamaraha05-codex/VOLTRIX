@@ -10,7 +10,7 @@ All writes to BigQuery happen via Shritama's data generator / Cloud Function.
 This module is read-only from the API's perspective.
 
 Env required:
-  GCP_PROJECT          e.g. "gridsense-buildx"
+  GCP_PROJECT          e.g. "voltrix-app"
   GOOGLE_APPLICATION_CREDENTIALS  path to service-account JSON (or use Workload Identity on Cloud Run)
 """
 
@@ -19,8 +19,8 @@ from datetime import datetime, timedelta
 from google.cloud import bigquery
 
 GCP_PROJECT = os.environ["GCP_PROJECT"]
-DATASET     = "gridsense"
-TABLE       = f"{GCP_PROJECT}.{DATASET}.load_readings"
+DATASET = "voltrix"
+TABLE = f"{GCP_PROJECT}.{DATASET}.load_readings"
 
 _client: bigquery.Client | None = None
 
@@ -33,6 +33,7 @@ def get_client() -> bigquery.Client:
 
 
 # ─── Core queries ─────────────────────────────────────────────────────────────
+
 
 def get_zone_hourly_load(zone_id: str, days_back: int = 30) -> list[dict]:
     """

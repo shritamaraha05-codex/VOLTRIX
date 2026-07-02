@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+.env.local
+venv/
+.venv/
+env/
+
+# Credentials
+service-account.json
+*.pem
+*.key
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Linting / formatting
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# BigQuery / data
+*.parquet
+*.avro
+*.csv

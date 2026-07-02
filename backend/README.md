@@ -1,4 +1,4 @@
-# GridSense Backend — Mrinmoy's README
+# VOLTRIX Backend — Mrinmoy's README
 
 FastAPI backend running on Cloud Run. Owns the full request lifecycle from
 zone queries through to the `/simulate/advance` orchestration loop.
@@ -9,7 +9,7 @@ zone queries through to the `/simulate/advance` orchestration loop.
 
 ```bash
 # 1. Clone and enter the backend directory
-cd gridsense-backend
+cd voltrix-backend
 
 # 2. Create virtualenv
 python -m venv .venv && source .venv/bin/activate

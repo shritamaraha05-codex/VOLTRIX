@@ -114,7 +114,7 @@ The architecture is **modular by design** — each layer is independently replac
 ## Repository Structure
 
 ```
-gridsense/
+voltrix/
 ├── backend/                  # FastAPI — Cloud Run
 │   ├── main.py               # All API endpoints + /simulate/advance orchestration
 │   ├── db.py                 # Postgres connection pool + domain helpers
@@ -200,8 +200,8 @@ Full Swagger docs at `/docs` once the API is running.
 ### 1. Clone
 
 ```bash
-git clone https://github.com/YOUR_ORG/gridsense.git
-cd gridsense
+git clone https://github.com/YOUR_ORG/voltrix.git
+cd voltrix
 ```
 
 ### 2. Backend

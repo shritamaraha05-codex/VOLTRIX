@@ -31,7 +31,7 @@ def forecast_zone(
     """
     try:
         raw = bq_module.get_zone_load_window(bq_zone_id, day=current_day)
-        if not raw:
+        if len(raw) < 48:
             return pd.DataFrame(columns=["ds", "yhat"])
 
         df = pd.DataFrame(raw).rename(columns={"timestamp": "ds", "load_kw": "y"})
@@ -39,13 +39,9 @@ def forecast_zone(
         # BigQuery returns timezone-aware timestamps; Prophet needs naive
         df["ds"] = pd.to_datetime(df["ds"], utc=True).dt.tz_localize(None)
 
-        if len(df) < 48:
-            return pd.DataFrame(columns=["ds", "yhat"])
-
         # Add hour-of-day cyclical regressors to help Prophet capture evening peak
-        df["hour"] = df["ds"].dt.hour
-        df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
-        df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
+        df["hour_sin"] = np.sin(2 * np.pi * df["ds"].dt.hour / 24)
+        df["hour_cos"] = np.cos(2 * np.pi * df["ds"].dt.hour / 24)
 
         model = Prophet(
             daily_seasonality=True,
@@ -59,9 +55,8 @@ def forecast_zone(
         model.fit(df[["ds", "y", "hour_sin", "hour_cos"]])
 
         future = model.make_future_dataframe(periods=periods, freq="h")
-        future["hour"] = future["ds"].dt.hour
-        future["hour_sin"] = np.sin(2 * np.pi * future["hour"] / 24)
-        future["hour_cos"] = np.cos(2 * np.pi * future["hour"] / 24)
+        future["hour_sin"] = np.sin(2 * np.pi * future["ds"].dt.hour / 24)
+        future["hour_cos"] = np.cos(2 * np.pi * future["ds"].dt.hour / 24)
 
         forecast = model.predict(future)
 
@@ -89,28 +84,28 @@ def detect_stress(
     Checks if any forecast hour breaches the capacity threshold.
 
     Returns a stress dict if a breach is found, else None.
-    The dict is passed directly to reasoning.generate_reasoning_and_nudges().
+    The dict is passed directly to agent.run_stress_analysis().
     """
     try:
         if forecast_df.empty:
             return None
 
         threshold = capacity_kw * threshold_pct
-        stress_windows = forecast_df[forecast_df["yhat"] > threshold]
+        stress_rows = forecast_df[forecast_df["yhat"] > threshold]
 
-        if stress_windows.empty:
+        if stress_rows.empty:
             return None
 
-        peak_kw = float(stress_windows["yhat"].max())
+        peak_kw = float(stress_rows["yhat"].max())
 
         return {
             "zone_id": bq_zone_id,
-            "window_start": stress_windows["ds"].min().to_pydatetime(),
-            "window_end": stress_windows["ds"].max().to_pydatetime(),
+            "window_start": stress_rows["ds"].min().to_pydatetime(),
+            "window_end": stress_rows["ds"].max().to_pydatetime(),
             "predicted_peak_kw": peak_kw,
             "capacity_kw": capacity_kw,
-            "overage_pct": round((peak_kw / capacity_kw - 1) * 100, 1),
-            "hours_stressed": int(len(stress_windows)),
+            "overage_pct": round(((peak_kw - capacity_kw) / capacity_kw) * 100, 1),
+            "hours_stressed": int(len(stress_rows)),
             "severity": "critical" if peak_kw > capacity_kw else "moderate",
         }
 
