@@ -1,7 +1,9 @@
-# VOLTRIX Backend — Mrinmoy's README
+# VOLTRIX Backend
 
 FastAPI backend running on Cloud Run. Owns the full request lifecycle from
 zone queries through to the `/simulate/advance` orchestration loop.
+
+Stack: FastAPI + Supabase (Postgres) + BigQuery + Prophet + Google ADK (Gemini 2.0 Flash) + stdlib SMTP.
 
 ---
 
@@ -19,7 +21,7 @@ pip install -r requirements.txt
 
 # 4. Set environment variables
 cp .env.example .env
-# → Fill in DATABASE_URL, GCP_PROJECT, GOOGLE_APPLICATION_CREDENTIALS
+# → Fill in DATABASE_URL, GCP_PROJECT, GEMINI_API_KEY, SMTP_* vars
 
 # 5. Apply Postgres schema (once)
 psql $DATABASE_URL -f schema.sql
@@ -35,7 +37,7 @@ Swagger docs at: http://localhost:8000/docs
 ## First-Time Setup Order
 
 1. `schema.sql` applied to Postgres
-2. Shritama loads synthetic data into BigQuery (zones + readings)
+2. Run `load_to_bq.py` (from repo root) to load synthetic data into BigQuery
 3. Hit `POST /admin/seed-households` once to sync households from BigQuery → Postgres
 4. Check `GET /zones` returns 5 zones
 5. Hit `POST /simulate/advance` manually once to verify the full loop works
@@ -53,7 +55,8 @@ Swagger docs at: http://localhost:8000/docs
 | GET | `/stress-events/{id}` | Single stress event |
 | GET | `/stress-events/{id}/recommendations` | Recommendations for drill-down view |
 | GET | `/recommendations?limit=50&unsent_only=false` | All recommendations |
-| POST | `/recommendations/{id}/mark-sent` | Mark a nudge as delivered |
+| POST | `/recommendations/{recommendation_id}/send` | Send recommendation via SMTP email |
+| POST | `/chat` | Conversational Q&A with ADK agent |
 | GET | `/simulation/state` | Current simulated day |
 | **POST** | **`/simulate/advance`** | **Advance day + run full pipeline** |
 | POST | `/admin/seed-households` | One-time BQ→Postgres household sync |
@@ -65,15 +68,15 @@ Swagger docs at: http://localhost:8000/docs
 
 ```
 1. current_day++ (capped at 30)
-2. For each zone:
+2. For each zone (skip if active stress event exists):
    a. Pull load window [0..current_day*24h] from BigQuery     → bq.get_zone_load_window()
    b. Fit Prophet on that window, forecast next 24h            → forecasting.forecast_zone()
    c. Save hourly forecasts to Postgres forecasts table        → db.save_forecasts()
    d. Check if any hour exceeds 85% of zone capacity           → forecasting.detect_stress()
    e. If stress detected:
       - Pull top 8 contributing households from BigQuery       → bq.get_household_load_for_zone()
-      - Call Gemini for reasoning + nudges                     → reasoning.generate_reasoning_and_nudges()
-      - INSERT stress_events row with Gemini reasoning         → db.save_stress_event()
+      - Call ADK agent for reasoning + nudges                  → agent.run_stress_analysis()
+      - INSERT stress_events row with ADK reasoning            → db.save_stress_event()
       - INSERT recommendations rows (one per household + utility) → db.save_recommendation()
 3. Return per-zone results array
 ```
@@ -85,7 +88,7 @@ Swagger docs at: http://localhost:8000/docs
 ```bash
 # Set env vars in your shell first
 export DATABASE_URL="postgresql://..."
-export RESEND_API_KEY="re_..."
+export GEMINI_API_KEY="AIza..."
 export ALLOWED_ORIGINS="https://your-frontend.vercel.app"
 
 chmod +x deploy.sh && ./deploy.sh
@@ -95,16 +98,17 @@ chmod +x deploy.sh && ./deploy.sh
 
 ## File ownership summary
 
-| File | You own | You call (teammate fills) |
+| File | Owned by | Description |
 |---|---|---|
-| `main.py` | ✅ Full ownership | `forecasting.py`, `reasoning.py` |
-| `db.py` | ✅ Full ownership | — |
-| `bq.py` | ✅ Full ownership | — |
-| `models.py` | ✅ Full ownership | — |
-| `schema.sql` | ✅ Full ownership | — |
-| `Dockerfile` | ✅ Full ownership | — |
-| `deploy.sh` | ✅ Full ownership | — |
-| `forecasting.py` | Interface/stubs | Debjyoti fills logic |
-| `reasoning.py` | Interface/stubs | Debjyoti fills logic |
+| `main.py` | Mrinmoy | All API endpoints + pipeline orchestration |
+| `agent.py` | Mrinmoy | Google ADK agent — stress analysis + Q&A |
+| `forecasting.py` | Debjyoti / Mrinmoy | Prophet forecasting + stress detection |
+| `email_service.py` | Mrinmoy | SMTP email delivery (stdlib smtplib) |
+| `db.py` | Mrinmoy | Postgres connection pool + domain helpers |
+| `bq.py` | Mrinmoy | BigQuery read-only wrapper |
+| `models.py` | Mrinmoy | Pydantic request/response schemas |
+| `schema.sql` | Mrinmoy | Postgres schema |
+| `Dockerfile` | Mrinmoy | Cloud Run container |
+| `deploy.sh` | Mrinmoy | One-command Cloud Run deploy |
 
-**Rule:** Never change the function signatures in `forecasting.py` or `reasoning.py` without syncing with Debjyoti — `main.py` depends on those exact signatures.
+**Rule:** Never change the function signatures in `forecasting.py` without syncing with Debjyoti — `main.py`, `agent.py` depend on those exact signatures.
