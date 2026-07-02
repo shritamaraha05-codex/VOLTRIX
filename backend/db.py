@@ -1,10 +1,10 @@
 """
-db.py — Postgres connection + helper wrappers
+db.py — Supabase (Postgres) connection + helper wrappers
 Owner: Mrinmoy
 
-Uses psycopg2 with a simple connection-pool pattern.
+Connects to Supabase Postgres via its native connection string using psycopg2.
 Set DATABASE_URL in your environment:
-  postgresql://user:password@host:5432/postgres
+  postgresql://postgres:password@db.[ref].supabase.co:5432/postgres
 """
 
 import os
