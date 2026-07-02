@@ -503,6 +503,45 @@ def seed_households():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/admin/health")
+def admin_health():
+    """Detailed health diagnostic for deployment verification."""
+    diagnostics = {}
+    checks = {"status": "ok"}
+
+    # DB check
+    try:
+        day = db.get_simulation_day()
+        zone_count = db.fetch_one("SELECT COUNT(*) AS n FROM zones")
+        diagnostics["database"] = {
+            "connected": True,
+            "simulation_day": day,
+            "zones": zone_count["n"] if zone_count else 0,
+        }
+    except Exception as e:
+        diagnostics["database"] = {"connected": False, "error": str(e)}
+        checks["status"] = "degraded"
+
+    # Env vars check (without revealing values)
+    required_vars = ["DATABASE_URL", "GCP_PROJECT", "GEMINI_API_KEY"]
+    optional_vars = ["SMTP_HOST", "SMTP_USER", "SMTP_FROM", "VOLTRIX_OPS_EMAIL"]
+    env_status = {}
+    for var in required_vars:
+        env_status[var] = "set" if os.environ.get(var) else "MISSING"
+        if not os.environ.get(var):
+            checks["status"] = "degraded"
+    for var in optional_vars:
+        env_status[var] = "set" if os.environ.get(var) else "not set (optional)"
+    diagnostics["environment"] = env_status
+
+    # CORS
+    diagnostics["cors"] = {
+        "allowed_origins": os.environ.get("ALLOWED_ORIGINS", "not set"),
+    }
+
+    return {"checks": checks, "diagnostics": diagnostics, "service": "voltrix-api"}
+
+
 @app.post("/admin/reset-simulation")
 def reset_simulation():
     """Reset the simulation clock back to day 1. Use before demo rehearsal."""
