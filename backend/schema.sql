@@ -79,6 +79,7 @@ INSERT INTO simulation_state (id, current_day) VALUES (1, 1)
 ON CONFLICT (id) DO NOTHING;
 
 -- ─── Indexes ──────────────────────────────────────────────────────────────────
+ALTER TABLE forecasts ADD CONSTRAINT uq_forecasts_zone_hour UNIQUE (zone_id, forecast_for);
 CREATE INDEX IF NOT EXISTS idx_forecasts_zone_ts    ON forecasts(zone_id, forecast_for DESC);
 CREATE INDEX IF NOT EXISTS idx_stress_events_zone   ON stress_events(zone_id, detected_at DESC);
 CREATE INDEX IF NOT EXISTS idx_recommendations_evt  ON recommendations(stress_event_id);

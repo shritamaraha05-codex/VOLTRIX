@@ -40,6 +40,8 @@ def get_conn():
     p = get_pool()
     conn = p.getconn()
     try:
+        with conn.cursor() as cur:
+            cur.execute("SET TIME ZONE 'UTC'")
         yield conn
         conn.commit()
     except Exception:
@@ -144,7 +146,8 @@ def save_forecasts(zone_id: str, forecast_rows: list[dict]) -> None:
         """
         INSERT INTO forecasts (zone_id, forecast_for, predicted_load_kw)
         VALUES (%s, %s, %s)
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (zone_id, forecast_for) DO UPDATE
+          SET predicted_load_kw = EXCLUDED.predicted_load_kw
         """,
         params,
     )
@@ -221,3 +224,52 @@ def mark_recommendation_sent(recommendation_id: str) -> None:
         "UPDATE recommendations SET sent = true, sent_at = now() WHERE id = %s",
         (recommendation_id,),
     )
+
+
+# ─── Ingestion helpers (used by /ingest/* endpoints) ───────────────────────────
+
+
+def upsert_zone(
+    bq_zone_id: str, name: str, capacity_kw: float, household_count: int | None = None
+) -> None:
+    execute(
+        """
+        INSERT INTO zones (name, bq_zone_id, household_count, baseline_capacity_kw)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (bq_zone_id) DO UPDATE
+          SET name = EXCLUDED.name,
+              baseline_capacity_kw = EXCLUDED.baseline_capacity_kw,
+              household_count = COALESCE(EXCLUDED.household_count, zones.household_count)
+        """,
+        (name, bq_zone_id, household_count, capacity_kw),
+    )
+
+
+def upsert_household(
+    bq_household_id: str,
+    bq_zone_id: str,
+    name: str | None,
+    email: str | None,
+    archetype: str | None,
+) -> bool:
+    zone = fetch_one("SELECT id FROM zones WHERE bq_zone_id = %s", (bq_zone_id,))
+    if not zone:
+        return False
+    execute(
+        """
+        INSERT INTO households (zone_id, bq_household_id, name, email, archetype)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (bq_household_id) DO UPDATE
+          SET zone_id = EXCLUDED.zone_id,
+              name = EXCLUDED.name,
+              email = EXCLUDED.email,
+              archetype = EXCLUDED.archetype
+        """,
+        (zone["id"], bq_household_id, name, email, archetype),
+    )
+    return True
+
+
+def known_zone_ids() -> set[str]:
+    rows = fetch_all("SELECT bq_zone_id FROM zones")
+    return {r["bq_zone_id"] for r in rows}

@@ -2,7 +2,7 @@
 agent.py — VOLTRIX Grid Intelligence Agent (Google ADK)
 Uses ADK + Gemini 2.0 Flash via AI Studio (free).
 
-The agent has four tools it can call autonomously:
+The agent has three tools it can call autonomously:
   - get_zone_details      -> fetch zone capacity and name
   - analyse_stress_cause  -> synthesise cause explanation
   - generate_household_nudges -> produce per-household recommendations
@@ -15,14 +15,18 @@ Exported functions (called by main.py):
 import os
 import json
 import logging
-import google.generativeai as genai
+import asyncio
+from google.genai import types
 from google.adk.agents import Agent
 from google.adk.tools import FunctionTool
+from google.adk import Runner
+from google.adk.sessions import InMemorySessionService
 
 logger = logging.getLogger("voltrix.agent")
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-genai.configure(api_key=GEMINI_API_KEY)
+# ADK 2.x uses google.genai internally which reads GOOGLE_API_KEY
+os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
 
 
 # ─── Tool functions (the agent calls these autonomously) ─────────────────────
@@ -31,10 +35,6 @@ genai.configure(api_key=GEMINI_API_KEY)
 def get_zone_details(
     zone_id: str, predicted_peak_kw: float, capacity_kw: float
 ) -> dict:
-    """
-    Returns a structured summary of the zone's stress situation.
-    The agent calls this first to understand context.
-    """
     overage = predicted_peak_kw - capacity_kw
     overage_pct = round((overage / capacity_kw) * 100, 1)
     return {
@@ -58,10 +58,6 @@ def analyse_stress_cause(
     window_end: str,
     archetype_breakdown: str,
 ) -> dict:
-    """
-    Analyses the likely causes of the stress event based on timing and archetypes.
-    Returns structured cause analysis.
-    """
     hour_start = int(window_start.split("T")[1][:2]) if "T" in window_start else 18
     causes = []
     if 16 <= hour_start <= 22:
@@ -80,10 +76,6 @@ def analyse_stress_cause(
 
 
 def generate_household_nudges(households_json: str) -> dict:
-    """
-    Generates specific, personalised nudges for each household based on archetype.
-    Returns list of nudge objects.
-    """
     try:
         households = json.loads(households_json)
     except Exception:
@@ -124,110 +116,93 @@ def generate_household_nudges(households_json: str) -> dict:
                 "suggested_shift": template["action"],
             }
         )
-
     return {"nudges": nudges, "total": len(nudges)}
 
 
-# ─── Build the ADK agent ──────────────────────────────────────────────────────
+# ─── Build the ADK agent + runner ────────────────────────────────────────────
 
 
 def _build_agent() -> Agent:
     return Agent(
         name="voltrix_grid_intelligence_agent",
-        model="gemini-2.0-flash",
-        description=(
-            "VOLTRIX grid intelligence agent. Analyses energy stress events, "
-            "determines root causes, and generates actionable recommendations "
-            "for citizens and utility operators."
+        model="gemma-4-31b-it",
+        description="VOLTRIX grid agent: stress analysis, root-cause diagnosis, citizen nudges.",
+        instruction=(
+            "You are a VOLTRIX grid expert. Given a stress event:\n"
+            "1. get_zone_details — severity\n"
+            "2. analyse_stress_cause — why\n"
+            "3. generate_household_nudges — per-home actions\n"
+            "4. Return ONLY valid JSON:\n"
+            '{"reasoning":"why","utility_action":"operator action","household_nudges":['
+            '{"household_id":"","message":"<25 words","suggested_shift":"action"}]}\n'
+            "Rules: plain English; specific utility action; nudge every household; no markdown."
         ),
-        instruction="""
-You are the VOLTRIX Grid Intelligence Agent — an expert AI system for energy grid management.
-
-When analysing a stress event:
-1. Call get_zone_details to understand the severity of the situation
-2. Call analyse_stress_cause to determine why the stress is happening
-3. Call generate_household_nudges to create personalised citizen recommendations
-4. Synthesise everything into a final structured JSON response
-
-Your final response MUST be valid JSON with this exact structure:
-{
-  "reasoning": "2-3 sentence plain-language explanation of why this stress event is occurring and what drives it",
-  "utility_action": "1-2 sentence concrete action for the grid operator to take immediately",
-  "household_nudges": [
-    {
-      "household_id": "...",
-      "message": "personalised nudge message under 25 words",
-      "suggested_shift": "specific action e.g. delay AC to 10pm"
-    }
-  ]
-}
-
-Rules:
-- reasoning must be plain English, no jargon, readable by a citizen
-- utility_action must be specific and immediately actionable
-- every household in the input must get a nudge
-- return ONLY the JSON object, no markdown fences, no preamble
-""",
         tools=[
             FunctionTool(get_zone_details),
             FunctionTool(analyse_stress_cause),
             FunctionTool(generate_household_nudges),
         ],
+        generate_content_config=types.GenerateContentConfig(
+            temperature=0.3,
+        ),
     )
 
 
+_session_service = InMemorySessionService()
 _agent_instance: Agent | None = None
+_runner_instance: Runner | None = None
 
 
-def _get_agent() -> Agent:
-    global _agent_instance
-    if _agent_instance is None:
+def _get_runner() -> Runner:
+    global _agent_instance, _runner_instance
+    if _runner_instance is None:
         _agent_instance = _build_agent()
-    return _agent_instance
+        _runner_instance = Runner(
+            agent=_agent_instance,
+            app_name="voltrix",
+            session_service=_session_service,
+            auto_create_session=True,
+        )
+    return _runner_instance
+
+
+async def _run_agent(
+    prompt: str, user_id: str = "user", session_id: str = "default"
+) -> str:
+    runner = _get_runner()
+    last_text = ""
+    message = types.Content(parts=[types.Part(text=prompt)], role="user")
+    async for event in runner.run_async(
+        user_id=user_id,
+        session_id=session_id,
+        new_message=message,
+    ):
+        if event.is_final_response():
+            content = event.message  # PartUnion / content object
+            if hasattr(content, "parts"):
+                for part in content.parts:
+                    if hasattr(part, "text") and part.text:
+                        last_text = part.text
+            elif hasattr(content, "text") and content.text:
+                last_text = content.text
+            elif isinstance(content, str):
+                last_text = content
+    return last_text
 
 
 # ─── Public functions called by main.py ──────────────────────────────────────
 
 
 def run_stress_analysis(stress_event: dict, household_summaries: list[dict]) -> dict:
-    """
-    Runs the ADK agent to analyse a stress event and generate recommendations.
-
-    Args:
-        stress_event: dict from forecasting.detect_stress()
-        household_summaries: list from bq.get_household_load_for_zone()
-
-    Returns dict with keys: reasoning, utility_action, household_nudges
-    Never raises — returns safe fallback on any error.
-    """
-    agent = _get_agent()
-
-    prompt = f"""
-Analyse this energy stress event and generate recommendations.
-
-Stress event data:
-{json.dumps(stress_event, indent=2, default=str)}
-
-Household data (top contributors by load):
-{json.dumps(household_summaries, indent=2, default=str)}
-
-Use your tools to analyse the situation, then return the structured JSON response.
-"""
-
+    prompt = f"Analyse this stress event and recommend actions.\nEvent: {json.dumps(stress_event, default=str)}\nHouseholds: {json.dumps(household_summaries, default=str)}"
     raw = ""
     try:
-        response = agent.run(prompt)
-        # Extract text from ADK response
-        raw = response.text.strip() if hasattr(response, "text") else str(response)
+        raw = asyncio.run(_run_agent(prompt))
         raw = raw.replace("```json", "").replace("```", "").strip()
         result = json.loads(raw)
-
-        # Ensure household_nudges has correct structure
         if "household_nudges" not in result:
             result["household_nudges"] = []
-
         return result
-
     except json.JSONDecodeError:
         import re
 
@@ -239,38 +214,21 @@ Use your tools to analyse the situation, then return the structured JSON respons
             pass
         logger.error("Agent returned unparseable JSON — using fallback")
         return _fallback_response(stress_event, household_summaries)
-
     except Exception as e:
         logger.error(f"ADK agent error: {e}", exc_info=True)
         return _fallback_response(stress_event, household_summaries)
 
 
 def answer_question(question: str, context: str) -> str:
-    """
-    Answers a citizen or operator question using the agent with context.
-    Used by the /chat endpoint.
-    """
-    agent = _get_agent()
-    prompt = f"""
-Answer the following question about the VOLTRIX energy platform.
-Use only the context provided. Be concise, friendly, and specific.
-Do not mention that you are an AI.
-
-Question: {question}
-
-Context:
-{context}
-"""
+    prompt = f"Q: {question}\nCtx: {context}"
     try:
-        response = agent.run(prompt)
-        return response.text.strip() if hasattr(response, "text") else str(response)
+        return asyncio.run(_run_agent(prompt, session_id="chat"))
     except Exception as e:
         logger.error(f"Agent chat error: {e}", exc_info=True)
         return "Sorry, I couldn't process that right now. Please try again."
 
 
 def _fallback_response(stress_event: dict, household_summaries: list[dict]) -> dict:
-    """Safe fallback if agent fails — never crashes the demo."""
     peak = stress_event.get("predicted_peak_kw", 0)
     cap = stress_event.get("capacity_kw", 1)
     zone = stress_event.get("zone_id", "unknown")

@@ -65,16 +65,60 @@ def get_zone_hourly_load(zone_id: str, days_back: int = 30) -> list[dict]:
 
 def get_zone_load_for_chart(zone_id: str, days_back: int = 3) -> list[dict]:
     """
-    Returns hourly load for the React dashboard chart (last N days only).
-    Shaped for Recharts: [{"hour": "2026-06-26 18:00", "actual": 28.3}, ...]
+    Returns hourly load for the React dashboard chart (last N days of the dataset).
+    Uses the dataset's own date range (via MIN/MAX timestamps) instead of
+    CURRENT_TIMESTAMP, so it works correctly with historical data that doesn't
+    span up to the present day.
+
+    Shaped for Recharts: [{"hour": "06-26 18:00", "actual": 28.3}, ...]
     """
-    raw = get_zone_hourly_load(zone_id, days_back=days_back)
+    client = get_client()
+    # Find the boundaries for this zone
+    bounds_query = f"""
+        SELECT MIN(timestamp) AS min_ts, MAX(timestamp) AS max_ts
+        FROM `{TABLE}`
+        WHERE zone_id = @zone_id
+    """
+    bounds = client.query(
+        bounds_query,
+        job_config=bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("zone_id", "STRING", zone_id)
+            ]
+        ),
+    ).result()
+    row = list(bounds)[0]
+    if row.min_ts is None:
+        return []
+    min_ts = row.min_ts
+    max_ts = row.max_ts
+    total_hours = int((max_ts - min_ts).total_seconds() / 3600) + 1
+    cutoff_hours = max(0, total_hours - days_back * 24)
+
+    query = f"""
+        SELECT
+            TIMESTAMP_TRUNC(timestamp, HOUR) AS timestamp,
+            SUM(load_kw)                     AS load_kw
+        FROM `{TABLE}`
+        WHERE zone_id = @zone_id
+          AND TIMESTAMP_DIFF(timestamp, @min_ts, HOUR) >= @cutoff_hours
+        GROUP BY 1
+        ORDER BY 1
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("zone_id", "STRING", zone_id),
+            bigquery.ScalarQueryParameter("min_ts", "TIMESTAMP", min_ts),
+            bigquery.ScalarQueryParameter("cutoff_hours", "INT64", cutoff_hours),
+        ]
+    )
+    rows = client.query(query, job_config=job_config).result()
     return [
         {
-            "hour": r["timestamp"].strftime("%m-%d %H:%M"),
-            "actual": round(r["load_kw"], 2),
+            "hour": r.timestamp.strftime("%m-%d %H:%M"),
+            "actual": round(float(r.load_kw), 2),
         }
-        for r in raw
+        for r in rows
     ]
 
 
@@ -118,6 +162,8 @@ def get_household_load_for_zone(zone_id: str, day: int, limit: int = 10) -> list
     sorted descending by avg_load_kw (highest contributors first).
     """
     client = get_client()
+    lower_hour = (day - 1) * 24
+    upper_hour = day * 24 - 1
     query = f"""
         SELECT
             household_id,
@@ -127,7 +173,7 @@ def get_household_load_for_zone(zone_id: str, day: int, limit: int = 10) -> list
         WHERE zone_id = @zone_id
           AND TIMESTAMP_DIFF(timestamp, (
                 SELECT MIN(timestamp) FROM `{TABLE}` WHERE zone_id = @zone_id
-              ), HOUR) BETWEEN {(day - 1) * 24} AND {day * 24 - 1}
+              ), HOUR) BETWEEN @lower_hour AND @upper_hour
         GROUP BY household_id, archetype
         ORDER BY avg_load_kw DESC
         LIMIT @lim
@@ -135,6 +181,8 @@ def get_household_load_for_zone(zone_id: str, day: int, limit: int = 10) -> list
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
             bigquery.ScalarQueryParameter("zone_id", "STRING", zone_id),
+            bigquery.ScalarQueryParameter("lower_hour", "INT64", lower_hour),
+            bigquery.ScalarQueryParameter("upper_hour", "INT64", upper_hour),
             bigquery.ScalarQueryParameter("lim", "INT64", limit),
         ]
     )
@@ -147,6 +195,37 @@ def get_household_load_for_zone(zone_id: str, day: int, limit: int = 10) -> list
         }
         for row in rows
     ]
+
+
+READINGS_SCHEMA = [
+    bigquery.SchemaField("household_id", "STRING"),
+    bigquery.SchemaField("zone_id", "STRING"),
+    bigquery.SchemaField("archetype", "STRING"),
+    bigquery.SchemaField("timestamp", "TIMESTAMP"),
+    bigquery.SchemaField("load_kw", "FLOAT64"),
+]
+
+
+def ensure_load_readings_table() -> None:
+    client = get_client()
+    table = bigquery.Table(TABLE, schema=READINGS_SCHEMA)
+    table.clustering_fields = ["zone_id", "timestamp"]
+    client.create_table(table, exists_ok=True)
+
+
+def load_readings_dataframe(df) -> int:
+    client = get_client()
+    ensure_load_readings_table()
+    payload = df[
+        ["household_id", "zone_id", "archetype", "timestamp", "load_kw"]
+    ].copy()
+    job_config = bigquery.LoadJobConfig(
+        schema=READINGS_SCHEMA,
+        write_disposition="WRITE_APPEND",
+    )
+    job = client.load_table_from_dataframe(payload, TABLE, job_config=job_config)
+    job.result()
+    return len(payload)
 
 
 def get_zone_ids() -> list[str]:
