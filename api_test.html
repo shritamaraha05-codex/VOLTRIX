@@ -898,16 +898,19 @@ async function sendChat() {
       buffer = lines.pop() || '';
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
+        const match = line.match(/^data:\s?(.*)$/);
+        if (match) {
+          const data = match[1].trim();
           if (data === '[DONE]') { done = true; break; }
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.token) {
-              bubble.textContent += parsed.token;
-              box.scrollTop = box.scrollHeight;
-            }
-          } catch(e) { /* skip unparseable */ }
+          if (data) {
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.token) {
+                bubble.textContent += parsed.token;
+                box.scrollTop = box.scrollHeight;
+              }
+            } catch(e) { /* skip unparseable */ }
+          }
         }
       }
     }

@@ -1070,16 +1070,19 @@ async function sendChat() {
       buffer = lines.pop() || '';
       for (var i = 0; i < lines.length; i++) {
         var line = lines[i];
-        if (line.startsWith('data: ')) {
-          var data = line.slice(6);
+        var match = line.match(/^data:\s?(.*)$/);
+        if (match) {
+          var data = match[1].trim();
           if (data === '[DONE]') { done = true; break; }
-          try {
-            var parsed = JSON.parse(data);
-            if (parsed.token) {
-              bubble.textContent += parsed.token;
-              box.scrollTop = box.scrollHeight;
-            }
-          } catch(e) { /* skip unparseable lines */ }
+          if (data) {
+            try {
+              var parsed = JSON.parse(data);
+              if (parsed.token) {
+                bubble.textContent += parsed.token;
+                box.scrollTop = box.scrollHeight;
+              }
+            } catch(e) { /* skip unparseable lines */ }
+          }
         }
       }
     }
