@@ -25,7 +25,12 @@ load_dotenv()
 import db
 import bq as bq_module
 import ingestion
-from forecasting import forecast_zone, detect_stress, backtest_zone
+from forecasting import (
+    forecast_zone,
+    detect_stress,
+    detect_actual_stress,
+    backtest_zone,
+)
 from agent import run_stress_analysis, answer_question
 from email_service import send_nudge_email, send_utility_alert, SMTP_USER
 from models import (
@@ -356,7 +361,18 @@ def advance_simulation():
                 continue
 
             # Step 1: Forecast
-            forecast_df = forecast_zone(bq_zone_id, periods=24, current_day=new_day)
+            # IMPORTANT: train through the day *before* new_day, not new_day
+            # itself. get_zone_load_window(day=N) returns data up to and
+            # including day N, so calling this with current_day=new_day would
+            # train on data that already contains new_day's own readings
+            # (including any injected stress event) and then forecast the day
+            # *after* that — meaning the system would never actually predict
+            # the day it's supposed to be evaluating. household_summaries
+            # below already correctly uses day=new_day, so the forecast needs
+            # to target the same day, trained on everything strictly before it.
+            forecast_df = forecast_zone(
+                bq_zone_id, periods=24, current_day=max(new_day - 1, 0)
+            )
 
             # Persist forecasts for the chart
             forecast_rows = [
@@ -367,6 +383,19 @@ def advance_simulation():
 
             # Step 2: Stress detection
             stress = detect_stress(bq_zone_id, forecast_df, capacity)
+
+            if not stress:
+                # Forecast-based detection only has a chance against stress
+                # that's building up gradually (there's a precedent in the
+                # preceding hours to extrapolate from). A genuinely novel,
+                # first-time spike with zero lead-up can't be predicted a day
+                # ahead by any load-history model. Fall back to checking
+                # today's own actual readings directly.
+                try:
+                    day_readings = bq_module.get_zone_load_for_day(bq_zone_id, new_day)
+                    stress = detect_actual_stress(bq_zone_id, day_readings, capacity)
+                except Exception as e:
+                    logger.error(f"    Nowcast check failed for {zone_name}: {e}")
 
             if not stress:
                 results.append(

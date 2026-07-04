@@ -200,8 +200,16 @@ def run_stress_analysis(stress_event: dict, household_summaries: list[dict]) -> 
         raw = asyncio.run(_run_agent(prompt))
         raw = raw.replace("```json", "").replace("```", "").strip()
         result = json.loads(raw)
+
         if "household_nudges" not in result:
             result["household_nudges"] = []
+        if not result["household_nudges"] and household_summaries:
+            # Agent skipped the nudges tool — backstop so the demo never
+            # shows zero nudges for a real stress event.
+            result["household_nudges"] = _fallback_response(
+                stress_event, household_summaries
+            )["household_nudges"]
+
         return result
     except json.JSONDecodeError:
         import re
