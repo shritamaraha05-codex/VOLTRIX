@@ -13,11 +13,12 @@ Environment variables required (set in .env or Cloud Run config):
 """
 
 import os
+import json
 import logging
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -31,7 +32,7 @@ from forecasting import (
     detect_actual_stress,
     backtest_zone,
 )
-from agent import run_stress_analysis, answer_question
+from agent import run_stress_analysis, answer_question, answer_question_stream
 from email_service import send_nudge_email, send_utility_alert, SMTP_USER
 from models import (
     ZoneOut,
@@ -473,10 +474,10 @@ def advance_simulation():
 # ─── Chat ──────────────────────────────────────────────────────────────────────
 
 
-@app.post("/chat", response_model=ChatResponse)
-def chat(body: ChatRequest):
+@app.post("/chat")
+async def chat(body: ChatRequest):
     """
-    Conversational Q&A using the ADK agent.
+    Conversational Q&A via SSE streaming from Gemma.
     Builds context from stress events, recommendations, and simulation state.
     """
     try:
@@ -544,12 +545,37 @@ def chat(body: ChatRequest):
                 )
 
         context = "\n".join(context_parts)
-        answer = answer_question(body.question, context)
-        return ChatResponse(answer=answer)
+
+        async def event_stream():
+            try:
+                async for token in answer_question_stream(body.question, context):
+                    yield f"data: {json.dumps({'token': token})}\n\n"
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                logger.error("chat stream error: %s", e, exc_info=True)
+                yield f"data: {json.dumps({'token': 'Sorry, I had trouble answering that.'})}\n\n"
+                yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     except Exception as e:
         logger.error(f"/chat error: {e}", exc_info=True)
-        return ChatResponse(answer="Sorry, I couldn't process that right now.")
+        return StreamingResponse(
+            iter(
+                [
+                    f"data: {json.dumps({'token': 'Sorry, I could not process that right now.'})}\n\n",
+                    "data: [DONE]\n\n",
+                ]
+            ),
+            media_type="text/event-stream",
+        )
 
 
 # ─── Data ingestion (CSV upload) ───────────────────────────────────────────────

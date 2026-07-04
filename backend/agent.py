@@ -1,21 +1,20 @@
 """
-agent.py — VOLTRIX Grid Intelligence Agent (Google ADK)
-Uses ADK + Gemini 2.0 Flash via AI Studio (free).
-
-The agent has three tools it can call autonomously:
-  - get_zone_details      -> fetch zone capacity and name
-  - analyse_stress_cause  -> synthesise cause explanation
-  - generate_household_nudges -> produce per-household recommendations
+agent.py — VOLTRIX Grid Intelligence Agent (Google ADK + google-genai)
+- ADK agent with tools for stress analysis (needs function calling)
+- google-genai direct streaming for chat (no tools needed, streaming SSE)
 
 Exported functions (called by main.py):
   run_stress_analysis(stress_event, household_summaries) -> dict
   answer_question(question, context) -> str
+  answer_question_stream(question, context) -> AsyncGenerator[str]
 """
 
 import os
 import json
 import logging
 import asyncio
+from collections.abc import AsyncGenerator
+from google import genai as genai_sdk
 from google.genai import types
 from google.adk.agents import Agent
 from google.adk.tools import FunctionTool
@@ -77,9 +76,16 @@ def analyse_stress_cause(
 
 def generate_household_nudges(households_json: str) -> dict:
     try:
-        households = json.loads(households_json)
+        households = (
+            json.loads(households_json)
+            if isinstance(households_json, str)
+            else households_json
+        )
     except Exception:
         return {"nudges": [], "error": "invalid households JSON"}
+
+    if not isinstance(households, list):
+        return {"nudges": [], "error": "expected a list of households"}
 
     archetype_nudges = {
         "family": {
@@ -106,11 +112,16 @@ def generate_household_nudges(households_json: str) -> dict:
 
     nudges = []
     for h in households:
+        if not isinstance(h, dict):
+            continue
+        household_id = h.get("household_id")
+        if not household_id:
+            continue
         archetype = h.get("archetype", "family")
         template = archetype_nudges.get(archetype, archetype_nudges["family"])
         nudges.append(
             {
-                "household_id": h["household_id"],
+                "household_id": household_id,
                 "archetype": archetype,
                 "message": template["message"],
                 "suggested_shift": template["action"],
@@ -234,6 +245,67 @@ def answer_question(question: str, context: str) -> str:
     except Exception as e:
         logger.error(f"Agent chat error: {e}", exc_info=True)
         return "Sorry, I couldn't process that right now. Please try again."
+
+
+# ─── Direct genai streaming (no ADK) for chat SSE ─────────────────────────
+
+_genai_client = None
+
+
+def _get_genai_client() -> genai_sdk.Client:
+    global _genai_client
+    if _genai_client is None:
+        _genai_client = genai_sdk.Client(api_key=GEMINI_API_KEY)
+    return _genai_client
+
+
+_CHAT_SYSTEM_INSTRUCTION = (
+    "You are a VOLTRIX grid expert helping users understand their smart grid "
+    "data. Answer concisely using the provided context. Be specific and "
+    "data-driven. If you don't know, say so. No markdown formatting."
+)
+
+
+async def answer_question_stream(
+    question: str, context: str
+) -> AsyncGenerator[str, None]:
+    """Async generator that yields text tokens as they stream from Gemma.
+    Uses a background thread + asyncio.Queue to bridge the sync genai SDK
+    into the async event loop so FastAPI can stream each token via SSE."""
+    client = _get_genai_client()
+    prompt = f"Q: {question}\nCtx: {context}"
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+
+    def _produce():
+        try:
+            response = client.models.generate_content_stream(
+                model="gemma-4-31b-it",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=types.Content(
+                        parts=[types.Part(text=_CHAT_SYSTEM_INSTRUCTION)]
+                    ),
+                    temperature=0.3,
+                ),
+            )
+            for chunk in response:
+                if hasattr(chunk, "text") and chunk.text:
+                    asyncio.run_coroutine_threadsafe(
+                        queue.put(chunk.text), loop
+                    ).result()
+        except Exception as e:
+            logger.error("genai stream error: %s", e, exc_info=True)
+        finally:
+            asyncio.run_coroutine_threadsafe(queue.put(None), loop).result()
+
+    loop.run_in_executor(None, _produce)
+
+    while True:
+        token = await queue.get()
+        if token is None:
+            break
+        yield token
 
 
 def _fallback_response(stress_event: dict, household_summaries: list[dict]) -> dict:
