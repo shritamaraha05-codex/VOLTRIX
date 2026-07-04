@@ -44,6 +44,7 @@ def load_readings():
         bigquery.SchemaField("archetype", "STRING"),
         bigquery.SchemaField("timestamp", "TIMESTAMP"),
         bigquery.SchemaField("load_kw", "FLOAT64"),
+        bigquery.SchemaField("temperature_c", "FLOAT64"),
     ]
     table = bigquery.Table(table_id, schema=schema)
     table.clustering_fields = ["zone_id", "timestamp"]
@@ -54,6 +55,8 @@ def load_readings():
     df["timestamp"] = pd.to_datetime(
         df["timestamp"], format="%Y-%m-%d %H:%M:%S UTC", utc=True
     )
+    if "temperature_c" in df.columns:
+        df["temperature_c"] = df["temperature_c"].astype(float)
 
     job = client.load_table_from_dataframe(df, table_id)
     job.result()

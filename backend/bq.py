@@ -155,6 +155,7 @@ READINGS_SCHEMA = [
     bigquery.SchemaField("archetype", "STRING"),
     bigquery.SchemaField("timestamp", "TIMESTAMP"),
     bigquery.SchemaField("load_kw", "FLOAT64"),
+    bigquery.SchemaField("temperature_c", "FLOAT64"),
 ]
 
 
