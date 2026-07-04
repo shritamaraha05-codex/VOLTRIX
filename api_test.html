@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOLTRIX — Smart Grid Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--nav-w:220px;--bg:#f0f2f5;--surface:#fff;--text:#1e293b;--text2:#64748b;--border:#e2e8f0;--primary:#2563eb;--primary-hover:#1d4ed8;--danger:#dc2626;--success:#16a34a;--amber:#d97706;--purple:#7c3aed;--shadow:0 1px 4px rgba(0,0,0,.07)}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;min-height:100vh}
+a{color:var(--primary);text-decoration:none}
+
+/* SIDEBAR */
+.sidebar{width:var(--nav-w);background:#0f172a;color:#e2e8f0;display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;transition:transform .2s}
+.sidebar-brand{padding:18px 16px 12px;font-size:17px;font-weight:700;letter-spacing:-.3px;border-bottom:1px solid rgba(255,255,255,.08)}
+.sidebar-brand span{color:#60a5fa}
+.sidebar-nav{padding:8px 0;flex:1;overflow-y:auto}
+.sidebar-nav button{display:flex;align-items:center;gap:10px;width:calc(100% - 8px);margin:1px 4px;padding:9px 12px;border:none;border-radius:8px;background:transparent;color:#94a3b8;font-size:13px;font-weight:500;cursor:pointer;transition:all .12s;text-align:left}
+.sidebar-nav button:hover{background:rgba(255,255,255,.06);color:#e2e8f0}
+.sidebar-nav button.active{background:rgba(37,99,235,.2);color:#60a5fa;font-weight:600}
+.sidebar-nav button .icon{font-size:16px;width:22px;text-align:center;flex-shrink:0}
+.sidebar-footer{padding:12px 16px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:#475569}
+
+/* MAIN */
+.main{margin-left:var(--nav-w);flex:1;min-height:100vh}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+.topbar-left{display:flex;align-items:center;gap:12px}
+.topbar-left h2{font-size:15px;font-weight:600}
+.hamburger{display:none;background:none;border:none;font-size:20px;cursor:pointer;color:var(--text);padding:4px}
+.topbar-right{display:flex;align-items:center;gap:12px}
+.topbar-right .badge{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600}
+.badge-ok{background:#dcfce7;color:#15803d}
+.badge-err{background:#fef2f2;color:#b91c1c}
+.badge-off{background:#f1f5f9;color:#94a3b8}
+.day-badge{font-size:12px;padding:4px 10px;border-radius:20px;background:#eff6ff;color:#1d4ed8;font-weight:600}
+
+.content{padding:20px 24px}
+
+/* KPI ROW */
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;box-shadow:var(--shadow)}
+.kpi-label{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+.kpi-value{font-size:22px;font-weight:700;margin-top:4px}
+.kpi-sub{font-size:11px;color:var(--text2);margin-top:2px}
+
+/* CARDS */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;box-shadow:var(--shadow)}
+.card-title{font-size:14px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.card-body{font-size:13px}
+
+/* ZONE GRID */
+.zone-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.zone-card{border-radius:10px;border:1px solid var(--border);padding:14px;background:var(--surface);cursor:pointer;transition:box-shadow .15s,transform .12s;box-shadow:var(--shadow)}
+.zone-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.1);transform:translateY(-1px)}
+.zone-card-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
+.zone-card-name{font-weight:600;font-size:14px}
+.zone-card-meta{font-size:11px;color:var(--text2);margin:2px 0 6px}
+.zone-card-stats{display:flex;gap:12px;font-size:12px}
+.zone-card-stats span{display:flex;align-items:center;gap:3px}
+.status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0}
+.status-dot.ok{background:var(--success)}
+.status-dot.warn{background:var(--amber)}
+.status-dot.err{background:var(--danger)}
+.status-dot.off{background:#94a3b8}
+
+/* CHART AREA */
+.chart-container{position:relative;height:200px;margin:8px 0}
+.chart-container canvas{width:100%!important;height:100%!important}
+
+/* TAGS */
+.tag{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600}
+.tag-red{background:#fef2f2;color:#b91c1c}
+.tag-green{background:#dcfce7;color:#15803d}
+.tag-amber{background:#fef3c7;color:#92400e}
+.tag-blue{background:#dbeafe;color:#1d4ed8}
+.tag-purple{background:#f3e8ff;color:#6d28d9}
+
+/* BUTTONS */
+.btn{padding:7px 16px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all .13s;display:inline-flex;align-items:center;gap:5px;color:#fff}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:var(--primary)}
+.btn-primary:hover:not(:disabled){background:var(--primary-hover)}
+.btn-amber{background:var(--amber)}
+.btn-amber:hover:not(:disabled){background:#b45309}
+.btn-danger{background:var(--danger)}
+.btn-danger:hover:not(:disabled){background:#b91c1c}
+.btn-success{background:var(--success)}
+.btn-success:hover:not(:disabled){background:#15803d}
+.btn-purple{background:var(--purple)}
+.btn-purple:hover:not(:disabled){background:#6d28d9}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn-outline:hover{background:#f8fafc}
+.btn-sm{padding:4px 10px;font-size:11px}
+.btn-icon{width:30px;height:30px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:8px}
+
+/* FORM */
+.input{padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;background:var(--surface);color:var(--text);width:100%}
+.input:focus{outline:2px solid var(--primary);outline-offset:-1px;border-color:transparent}
+select.input{padding:6px 10px;cursor:pointer}
+.flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.flex-between{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.mt{margin-top:10px}
+.mb{margin-bottom:10px}
+.ml{ margin-left:8px}
+.mr{ margin-right:8px}
+
+/* MESSAGES */
+.msg{padding:10px 14px;border-radius:8px;font-size:13px;margin:6px 0}
+.msg-ok{background:#f0fdf4;border:1px solid #86efac;color:#166534}
+.msg-err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+.msg-info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+.msg-amber{background:#fffbeb;border:1px solid #fde68a;color:#92400e}
+
+/* PRE */
+pre.code{background:#f8fafc;border:1px solid var(--border);border-radius:7px;padding:12px;font-size:11px;overflow:auto;max-height:360px;white-space:pre-wrap;word-break:break-all;font-family:'SF Mono',Consolas,monospace}
+
+/* SPINNER */
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* SKELETON */
+.skel{background:linear-gradient(90deg,#f0f2f5 25%,#e2e8f0 50%,#f0f2f5 75%);background-size:200% 100%;animation:skel 1.4s infinite;border-radius:6px}
+@keyframes skel{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.skel-bar{height:14px;margin:6px 0}
+.skel-block{height:60px;margin:8px 0}
+
+/* TOAST */
+.toast-container{position:fixed;bottom:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:8px;max-width:340px}
+.toast{padding:10px 14px;border-radius:8px;font-size:12px;font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,.15);transform:translateX(120%);animation:slideIn .25s forwards;display:flex;align-items:center;gap:8px;color:#fff}
+.toast.toast-ok{background:#16a34a}
+.toast.toast-err{background:#dc2626}
+.toast.toast-info{background:#2563eb}
+@keyframes slideIn{to{transform:translateX(0)}}
+
+/* EVENTS */
+.event-item{border-left:3px solid var(--border);padding:10px 14px;margin:6px 0;border-radius:0 8px 8px 0;background:#f8fafc}
+.event-item.critical{border-left-color:var(--danger);background:#fef2f2}
+.event-item.moderate{border-left-color:var(--amber);background:#fffbeb}
+.event-item.low{border-left-color:var(--success);background:#f0fdf4}
+
+/* CHAT */
+.chat-box{background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:14px;max-height:360px;overflow-y:auto;margin-bottom:8px;display:flex;flex-direction:column;gap:8px}
+.chat-msg{max-width:85%;padding:8px 12px;border-radius:12px;font-size:13px;line-height:1.5}
+.chat-user{background:var(--primary);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.chat-bot{background:var(--surface);border:1px solid var(--border);align-self:flex-start;border-bottom-left-radius:4px;color:var(--text)}
+
+/* PAGE SYSTEM */
+.page{display:none}
+.page.active{display:block}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:10px}
+
+/* RESPONSIVE */
+@media(max-width:768px){
+  .sidebar{transform:translateX(-100%)}
+  .sidebar.open{transform:translateX(0)}
+  .main{margin-left:0}
+  .hamburger{display:block}
+  .content{padding:14px 12px}
+  .kpi-row{grid-template-columns:repeat(2,1fr)}
+  .zone-grid{grid-template-columns:1fr}
+  .topbar{padding:0 12px}
+  .topbar-left h2{font-size:13px}
+}
+
+@media(max-width:480px){
+  .kpi-row{grid-template-columns:1fr}
+}
+
+.chart-tabs{display:flex;gap:4px;margin-bottom:10px}
+.chart-tabs button{padding:4px 12px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:var(--surface);cursor:pointer;color:var(--text2);font-weight:500}
+.chart-tabs button.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.zone-detail-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.empty-state{padding:30px 20px;text-align:center;color:var(--text2);font-size:13px}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav class="sidebar" id="sidebar">
+<div class="sidebar-brand"><span>VOLTRIX</span> Grid</div>
+<div class="sidebar-nav">
+<button class="active" data-page="dashboard" onclick="switchPage('dashboard');closeSidebar()"><span class="icon">&#9632;</span>Dashboard</button>
+<button data-page="zones" onclick="switchPage('zones');closeSidebar()"><span class="icon">&#9670;</span>Zones</button>
+<button data-page="events" onclick="switchPage('events');closeSidebar()"><span class="icon">&#9888;</span>Events</button>
+<button data-page="recommendations" onclick="switchPage('recommendations');closeSidebar()"><span class="icon">&#9993;</span>Recommendations</button>
+<button data-page="simulation" onclick="switchPage('simulation');closeSidebar()"><span class="icon">&#9654;</span>Simulation</button>
+<button data-page="chat" onclick="switchPage('chat');closeSidebar()"><span class="icon">&#128172;</span>Chat</button>
+<button data-page="admin" onclick="switchPage('admin');closeSidebar()"><span class="icon">&#9881;</span>Admin</button>
+</div>
+<div class="sidebar-footer">VOLTRIX v1.0 &middot; MVP</div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+<div class="topbar">
+<div class="topbar-left">
+<button class="hamburger" onclick="document.getElementById('sidebar').classList.toggle('open')">&#9776;</button>
+<h2 id="pageTitle">Dashboard</h2>
+</div>
+<div class="topbar-right">
+<span class="day-badge" id="dayBadge">Day ?</span>
+<span class="badge badge-off" id="statusBadge">Offline</span>
+</div>
+</div>
+
+<div class="content">
+
+<!-- ==================== DASHBOARD ==================== -->
+<div id="page-dashboard" class="page active">
+<div class="kpi-row" id="dashKpis">
+<div class="kpi-card"><div class="kpi-label">Zones</div><div class="kpi-value" id="dashZones">—</div><div class="kpi-sub">Total zones monitored</div></div>
+<div class="kpi-card"><div class="kpi-label">Active Events</div><div class="kpi-value" id="dashEvents" style="color:var(--danger)">—</div><div class="kpi-sub">Current stress events</div></div>
+<div class="kpi-card"><div class="kpi-label">Sim Day</div><div class="kpi-value" id="dashDay">—</div><div class="kpi-sub">of 30-day simulation</div></div>
+<div class="kpi-card"><div class="kpi-label">Households</div><div class="kpi-value" id="dashHh">—</div><div class="kpi-sub">Across all zones</div></div>
+</div>
+<div id="dashZoneGrid" class="zone-grid"></div>
+</div>
+
+<!-- ==================== ZONES ==================== -->
+<div id="page-zones" class="page">
+<div class="flex-between mb">
+<h3 style="font-size:15px">Zone Explorer</h3>
+<button class="btn btn-primary btn-sm" onclick="loadZones()">&#8635; Refresh</button>
+</div>
+<div id="zoneList" class="zone-grid"></div>
+<div id="zoneModal" style="margin-top:12px"></div>
+</div>
+
+<!-- ==================== EVENTS ==================== -->
+<div id="page-events" class="page">
+<div class="flex-between mb">
+<h3 style="font-size:15px">Stress Events</h3>
+<div class="flex">
+<select id="eventLimit" class="input" style="width:70px" onchange="loadEvents()">
+<option>5</option><option selected>10</option><option>20</option><option>50</option>
+</select>
+<button class="btn btn-primary btn-sm" onclick="loadEvents()">&#8635;</button>
+</div>
+</div>
+<div id="eventList"></div>
+<div id="eventRecs" style="margin-top:10px"></div>
+</div>
+
+<!-- ==================== RECOMMENDATIONS ==================== -->
+<div id="page-recommendations" class="page">
+<div class="flex-between mb">
+<h3 style="font-size:15px">Recommendations</h3>
+<div class="flex">
+<select id="recType" class="input" style="width:auto" onchange="loadRecs()">
+<option value="all">All</option>
+<option value="unsent">Unsent Only</option>
+<option value="high">High Priority</option>
+</select>
+<button class="btn btn-primary btn-sm" onclick="loadRecs()">&#8635;</button>
+</div>
+</div>
+<div id="recList"></div>
+</div>
+
+<!-- ==================== SIMULATION ==================== -->
+<div id="page-simulation" class="page">
+<div class="flex-between mb">
+<div>
+<h3 style="font-size:15px">Simulation Control</h3>
+<div style="font-size:12px;color:var(--text2)">Advance time to generate load data and trigger stress detection</div>
+</div>
+<div class="flex">
+<button class="btn btn-outline btn-sm" onclick="getSimState()">Refresh</button>
+<button class="btn btn-amber btn-sm" id="advanceBtn" onclick="advanceSim()">&#9654; Advance +1 Day</button>
+</div>
+</div>
+<div id="simState"></div>
+<div id="simResult" style="margin-top:10px"></div>
+</div>
+
+<!-- ==================== CHAT ==================== -->
+<div id="page-chat" class="page">
+<h3 style="font-size:15px;margin-bottom:4px">Grid Assistant</h3>
+<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Ask questions about grid status, stress events, or recommendations</div>
+<div class="chat-box" id="chatBox">
+<div class="chat-msg chat-bot">Hello! I'm the VOLTRIX grid assistant. Ask me about any zone, stress event, or recommendation.</div>
+</div>
+<div class="flex">
+<input id="chatInput" class="input" placeholder="Ask a question..." style="flex:1" onkeydown="if(event.key==='Enter')sendChat()">
+<button class="btn btn-primary btn-sm" onclick="sendChat()">Send</button>
+</div>
+<div class="flex mt" style="font-size:11px;color:var(--text2)">
+<label>Household ID (optional):</label>
+<input id="chatHhId" class="input" placeholder="zone_2_hh_03" style="width:140px">
+</div>
+</div>
+
+<!-- ==================== ADMIN ==================== -->
+<div id="page-admin" class="page">
+<div class="flex-between mb">
+<h3 style="font-size:15px">Administration</h3>
+</div>
+<div class="card">
+<div class="card-title">&#9881; Actions</div>
+<div class="flex">
+<button class="btn btn-purple btn-sm" onclick="seedHouseholds()">&#127793; Seed Households</button>
+<button class="btn btn-outline btn-sm" onclick="resetSim()">&#8635; Reset Simulation</button>
+<button class="btn btn-outline btn-sm" onclick="runHealthCheck()">&#128200; Health Check</button>
+</div>
+<div id="adminResult" class="mt"></div>
+</div>
+<div class="card">
+<div class="card-title">&#128200; Diagnostics</div>
+<div id="diagResult"><div class="msg msg-info">Run a health check to see diagnostics.</div></div>
+</div>
+</div>
+
+</div><!-- /content -->
+</div><!-- /main -->
+
+<!-- TOAST -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+/* ===== UTILITY ===== */
+const BASE = () => document.getElementById('baseUrl')?.value?.replace(/\/+$/,'') || 'http://localhost:5000';
+const $ = id => document.getElementById(id);
+const esc = s => s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const formatTime = s => s ? new Date(s).toLocaleString() : '—';
+const loading = id => $(id).innerHTML = '<div class="empty-state"><span class="spinner"></span> Loading...</div>';
+
+function severityTag(s) {
+  if (!s) return '';
+  const m = {critical:'tag-red',moderate:'tag-amber',high:'tag-red',medium:'tag-amber',low:'tag-green'};
+  return `<span class="tag ${m[s.toLowerCase()]||'tag-blue'}">${esc(s)}</span>`;
+}
+function boolTag(v) {
+  return v ? '<span class="tag tag-green">&#10003; Yes</span>' : '<span class="tag tag-amber">&#10007; No</span>';
+}
+function statusDot(s) {
+  const m = {ok:'ok',healthy:'ok',normal:'ok',warn:'warn',moderate:'warn',critical:'err',high:'err'};
+  return `<span class="status-dot ${m[s&&s.toLowerCase()]||'off'}"></span>`;
+}
+
+function toast(msg, type='info') {
+  const c = $('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.innerHTML = msg;
+  c.appendChild(t);
+  setTimeout(() => { t.style.transition = 'transform .25s,opacity .25s'; t.style.transform = 'translateX(120%)'; t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+}
+
+/* ===== NAVIGATION ===== */
+let chartInstances = {};
+let zoneDataCache = {};
+
+function switchPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + id));
+  document.querySelectorAll('.sidebar-nav button').forEach(b => b.classList.toggle('active', b.dataset.page === id));
+  const titles = {dashboard:'Dashboard',zones:'Zone Explorer',events:'Stress Events',recommendations:'Recommendations',simulation:'Simulation Control',chat:'Grid Assistant',admin:'Administration'};
+  $('pageTitle').textContent = titles[id] || id;
+  if (id === 'dashboard') refreshDashboard();
+  if (id === 'zones') loadZones();
+  if (id === 'events') loadEvents();
+  if (id === 'recommendations') loadRecs();
+}
+
+function closeSidebar() {
+  if (window.innerWidth <= 768) document.getElementById('sidebar').classList.remove('open');
+}
+
+/* ===== HEALTH + CONNECT ===== */
+async function checkHealth() {
+  try {
+    const h = await api('/health');
+    $('statusBadge').className = 'badge badge-ok';
+    $('statusBadge').textContent = '\u2714 Online';
+    if (h.day != null) $('dayBadge').textContent = `Day ${h.day}`;
+    runHealthCheck();
+    return h;
+  } catch (e) {
+    $('statusBadge').className = 'badge badge-err';
+    $('statusBadge').textContent = '\u2718 Offline';
+    $('dayBadge').textContent = 'Day ?';
+    toast('Backend offline: ' + e.message, 'err');
+    throw e;
+  }
+}
+
+async function api(path, opts = {}) {
+  const r = await fetch(BASE() + path, {
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    ...opts
+  });
+  if (!r.ok) { const t = await r.text(); throw new Error(r.status + ' ' + t.slice(0, 300)); }
+  return r.json();
+}
+
+/* ===== DASHBOARD ===== */
+async function refreshDashboard() {
+  try {
+    const h = await checkHealth();
+    const zones = await api('/zones');
+    $('dashZones').textContent = zones.length;
+    if (h.day != null) $('dashDay').textContent = h.day;
+
+    let totalHh = 0;
+    zones.forEach(z => { if (z.household_count) totalHh += z.household_count; });
+    $('dashHh').textContent = totalHh || '—';
+
+    let events;
+    try { events = await api('/stress-events?limit=50'); } catch(e) { events = []; }
+    const activeEvents = events.filter(e => !e.action_taken).length;
+    $('dashEvents').textContent = activeEvents;
+    $('dashEvents').style.color = activeEvents > 0 ? '#dc2626' : '#16a34a';
+
+    renderDashboardZones(zones, events || []);
+  } catch(e) {
+    toast('Dashboard refresh failed: ' + e.message, 'err');
+  }
+}
+
+function renderDashboardZones(zones, events) {
+  const container = $('dashZoneGrid');
+  if (!zones.length) {
+    container.innerHTML = '<div class="empty-state">No zones found. Seed the database first.</div>';
+    return;
+  }
+  let html = '';
+  zones.forEach(z => {
+    const zoneEvents = events.filter(e => e.zone_id === z.bq_zone_id || e.zone_name === z.name);
+    const hasStress = zoneEvents.some(e => e.severity === 'critical' || e.severity === 'high');
+    const hasWarn = zoneEvents.some(e => e.severity === 'moderate' || e.severity === 'medium');
+    const dotClass = hasStress ? 'err' : hasWarn ? 'warn' : 'ok';
+    html += `<div class="zone-card" onclick="viewZoneDetail('${esc(z.bq_zone_id)}','${esc(z.name)}')">
+      <div class="zone-card-header">
+        <div><div class="zone-card-name">${esc(z.name)}</div>
+        <div class="zone-card-meta">${esc(z.bq_zone_id)}</div></div>
+        <div><span class="status-dot ${dotClass}"></span></div>
+      </div>
+      <div class="zone-card-stats">
+        <span>&#9889; ${z.baseline_capacity_kw ?? '?'} kW</span>
+        <span>&#127968; ${z.household_count ?? '?'} hh</span>
+        <span>&#9888; ${zoneEvents.length}</span>
+      </div>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+/* ===== ZONES ===== */
+async function loadZones() {
+  loading('zoneList');
+  $('zoneModal').innerHTML = '';
+  try {
+    const zones = await api('/zones');
+    if (!zones.length) { $('zoneList').innerHTML = '<div class="empty-state">No zones found. Seed the database.</div>'; return; }
+    let html = '';
+    zones.forEach(z => {
+      html += `<div class="zone-card" onclick="viewZoneDetail('${esc(z.bq_zone_id)}','${esc(z.name)}')">
+        <div class="zone-card-header">
+          <div><div class="zone-card-name">${esc(z.name)}</div>
+          <div class="zone-card-meta">${esc(z.bq_zone_id)}</div></div>
+          <div style="font-size:11px;color:var(--text2)">&#9889; ${z.baseline_capacity_kw ?? '?'} kW</div>
+        </div>
+        <div class="zone-card-stats">
+          <span>&#127968; ${z.household_count ?? '?'} households</span>
+        </div>
+      </div>`;
+    });
+    $('zoneList').innerHTML = html;
+  } catch(e) { $('zoneList').innerHTML = `<div class="msg msg-err">${esc(e.message)}</div>`; }
+}
+
+/* ===== CHARTS (shadcn-style) ===== */
+const SHADCN_COLORS = {
+  blue: { bg: 'rgba(59,130,246,0.12)', border: '#3b82f6', solid: 'rgba(59,130,246,0.08)' },
+  amber: { bg: 'rgba(245,158,11,0.12)', border: '#f59e0b', solid: 'rgba(245,158,11,0.08)' },
+  red:   { bg: 'rgba(239,68,68,0.12)', border: '#ef4444', solid: 'rgba(239,68,68,0.08)' },
+  green: { bg: 'rgba(34,197,94,0.12)', border: '#22c55e', solid: 'rgba(34,197,94,0.08)' },
+};
+
+function createGradient(ctx, color, alphaTop = 0.25, alphaBottom = 0.0) {
+  const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+  gradient.addColorStop(0, color.replace(')', `,${alphaTop})`).replace('rgb', 'rgba').replace('rgba', 'rgba'));
+  gradient.addColorStop(1, color.replace(')', `,${alphaBottom})`).replace('rgb', 'rgba').replace('rgba', 'rgba'));
+  return gradient;
+}
+
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+Chart.defaults.color = '#64748b';
+
+function renderForecastChart(canvasId, data, zoneName, chartType = 'line') {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  if (!data || data.length < 2) {
+    canvas.parentElement.innerHTML = '<div class="msg msg-info">Not enough data for forecast chart.</div>';
+    return;
+  }
+
+  const pts = data.slice(-48);
+  const labels = pts.map(p => p.hour ? p.hour.split(' ')[1] || p.hour : '');
+  const actuals = pts.map(p => p.actual != null ? p.actual : null);
+  const predicted = pts.map(p => p.predicted != null ? p.predicted : null);
+  const capVal = pts.reduce((a,b) => Math.max(a, b.baseline_capacity_kw || b.capacity_kw || 0), 0);
+
+  if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+  const ctx = canvas.getContext('2d');
+  const blueGrad = ctx.createLinearGradient(0, 0, 0, 200);
+  blueGrad.addColorStop(0, 'rgba(59,130,246,0.18)');
+  blueGrad.addColorStop(1, 'rgba(59,130,246,0.0)');
+  const amberGrad = ctx.createLinearGradient(0, 0, 0, 200);
+  amberGrad.addColorStop(0, 'rgba(245,158,11,0.18)');
+  amberGrad.addColorStop(1, 'rgba(245,158,11,0.0)');
+
+  const datasets = [
+    {
+      label: 'Actual Load',
+      data: actuals,
+      borderColor: '#3b82f6',
+      backgroundColor: blueGrad,
+      borderWidth: 2,
+      pointRadius: 2,
+      pointHoverRadius: 5,
+      pointBackgroundColor: '#3b82f6',
+      tension: 0.2,
+      fill: chartType === 'area' || chartType === 'line',
+      ...(chartType === 'bar' ? { type: 'bar', backgroundColor: 'rgba(59,130,246,0.65)', borderColor: '#3b82f6', borderWidth: 1, borderRadius: 3, order: 2 } : {}),
+      order: chartType === 'bar' ? 2 : 1
+    },
+    {
+      label: 'Prophet Forecast',
+      data: predicted,
+      borderColor: '#f59e0b',
+      backgroundColor: amberGrad,
+      borderWidth: 2,
+      borderDash: [6, 3],
+      pointRadius: 2,
+      pointHoverRadius: 5,
+      pointBackgroundColor: '#f59e0b',
+      tension: 0.2,
+      fill: chartType === 'area' || chartType === 'line',
+      ...(chartType === 'bar' ? { type: 'bar', backgroundColor: 'rgba(245,158,11,0.65)', borderColor: '#f59e0b', borderWidth: 1, borderRadius: 3, order: 2 } : {}),
+      order: chartType === 'bar' ? 2 : 1
+    }
+  ];
+
+  if (capVal > 0) {
+    datasets.push({
+      label: 'Capacity',
+      data: Array(labels.length).fill(capVal),
+      borderColor: '#ef4444',
+      borderWidth: 1.5,
+      borderDash: [4, 4],
+      pointRadius: 0,
+      fill: false,
+      type: 'line',
+      order: 0
+    });
+  }
+
+  chartInstances[canvasId] = new Chart(ctx, {
+    type: (chartType === 'bar') ? 'bar' : 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        intersect: false,
+        mode: 'index'
+      },
+      plugins: {
+        legend: {
+          position: 'top',
+          align: 'end',
+          labels: {
+            boxWidth: 14,
+            boxHeight: 2,
+            padding: 12,
+            font: { size: 11, weight: '500' },
+            usePointStyle: chartType !== 'bar',
+            pointStyle: 'circle'
+          }
+        },
+        tooltip: {
+          backgroundColor: '#0f172a',
+          titleFont: { size: 11, weight: '600' },
+          bodyFont: { size: 12 },
+          padding: 10,
+          cornerRadius: 8,
+          displayColors: true,
+          boxPadding: { left: 6, right: 6 },
+          callbacks: {
+            title: items => {
+              const idx = items[0].dataIndex;
+              return pts[idx]?.hour || '';
+            },
+            label: ctx => {
+              const v = ctx.parsed.y;
+              const cap = capVal;
+              let label = `${ctx.dataset.label}: ${v != null ? v.toFixed(2) + ' kW' : '—'}`;
+              if (cap > 0 && v != null) {
+                const pct = (v / cap * 100).toFixed(1);
+                label += ` (${pct}% of capacity)`;
+              }
+              return label;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { font: { size: 9 }, maxRotation: 35, autoSkip: true, maxTicksLimit: 24 },
+          grid: { display: false },
+          border: { display: false }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { font: { size: 9 }, callback: v => v.toFixed(1) },
+          grid: { color: 'rgba(0,0,0,0.06)', drawTicks: false },
+          border: { display: false },
+          title: { display: true, text: 'kW', font: { size: 10, weight: '500' }, color: '#94a3b8' }
+        }
+      },
+      elements: {
+        point: { hoverRadius: 6 },
+        line: { borderJoinStyle: 'round' }
+      },
+      animations: {
+        tension: { duration: 800, easing: 'easeOutQuad' }
+      },
+      onClick: (e, elements) => {
+        if (elements.length) {
+          const idx = elements[0].index;
+          const p = pts[idx];
+          toast(`<b>${p.hour || ''}</b><br>Actual: ${p.actual?.toFixed(2) ?? '—'} kW | Forecast: ${p.predicted?.toFixed(2) ?? '—'} kW${capVal > 0 ? ' | Capacity: ' + capVal.toFixed(1) + ' kW' : ''}`, 'info');
+        }
+      }
+    }
+  });
+}
+
+async function viewZoneDetail(zoneId, zoneName) {
+  const container = $('zoneModal');
+  container.innerHTML = `<div class="card"><div class="card-title">&#128200; ${esc(zoneName)} — Loading forecast...</div><div class="empty-state"><span class="spinner"></span></div></div>`;
+  try {
+    const d = await api(`/zones/${encodeURIComponent(zoneId)}/load-history?days=3`);
+    const last = d.length ? d[d.length - 1] : null;
+    const peak = d.length ? d.reduce((a,b) => Math.max(a, b.actual||b.predicted||0), 0) : 0;
+    const canvasId = 'chart-' + zoneId.replace(/[^a-z0-9]/gi,'_');
+
+    let html = `<div class="card">
+      <div class="zone-detail-header">
+        <div><div class="card-title">&#128200; ${esc(zoneName)} <span style="font-weight:400;font-size:12px;color:var(--text2)">${esc(zoneId)}</span></div></div>
+        <button class="btn btn-outline btn-sm" onclick="$('zoneModal').innerHTML=''">&#10005; Close</button>
+      </div>
+      <div class="flex" style="gap:16px;flex-wrap:wrap;margin-bottom:8px">`;
+    html += `<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Peak Load</div><div style="font-size:18px;font-weight:700;color:#3b82f6">${peak.toFixed(2)} kW</div></div>`;
+    if (last) {
+      html += `<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Latest Actual</div><div style="font-size:18px;font-weight:700">${last.actual != null ? last.actual.toFixed(2) + ' kW' : '—'}</div></div>`;
+      html += `<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Latest Forecast</div><div style="font-size:18px;font-weight:700;color:#f59e0b">${last.predicted != null ? last.predicted.toFixed(2) + ' kW' : '—'}</div></div>`;
+    }
+    html += `<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Data Points</div><div style="font-size:18px;font-weight:700">${d.length}</div></div>`;
+    html += `</div>`;
+
+    if (d.length >= 2) {
+      zoneDataCache[canvasId] = d;
+      html += `<div class="chart-tabs" id="chartTabs-${canvasId}">
+        <button class="active" data-ctype="line" onclick="switchChartType('${canvasId}','line','${esc(zoneName)}')">&#8212; Line</button>
+        <button data-ctype="bar" onclick="switchChartType('${canvasId}','bar','${esc(zoneName)}')">&#9636; Bar</button>
+        <button data-ctype="area" onclick="switchChartType('${canvasId}','area','${esc(zoneName)}')">&#9606; Area</button>
+      </div>`;
+      html += `<div class="chart-container"><canvas id="${canvasId}"></canvas></div>`;
+    } else {
+      html += `<div class="msg msg-info">Not enough data for forecast chart.</div>`;
+    }
+
+    html += `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--text2)">Raw Data (${Math.min(d.length,48)} of ${d.length})</summary>
+      <pre class="code mt">${esc(JSON.stringify(d.slice(0,48),null,2))}</pre>
+      ${d.length > 48 ? `<div style="font-size:11px;color:var(--text2);margin-top:4px">... and ${d.length - 48} more points</div>` : ''}
+    </details>`;
+    html += `</div>`;
+    container.innerHTML = html;
+
+    if (d.length >= 2) {
+      setTimeout(() => renderForecastChart(canvasId, d, zoneName, 'line'), 50);
+    }
+  } catch(e) {
+    container.innerHTML = `<div class="card"><div class="zone-detail-header"><div class="card-title">${esc(zoneName)}</div>
+      <button class="btn btn-outline btn-sm" onclick="$('zoneModal').innerHTML=''">Close</button></div>
+      <div class="msg msg-err">${esc(e.message)}</div></div>`;
+  }
+}
+
+function switchChartType(canvasId, type, zoneName) {
+  const parent = document.getElementById('chartTabs-' + canvasId);
+  if (!parent) return;
+  parent.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.ctype === type));
+  const data = zoneDataCache[canvasId];
+  if (data) renderForecastChart(canvasId, data, zoneName, type);
+}
+
+/* ===== EVENTS ===== */
+async function loadEvents() {
+  loading('eventList');
+  $('eventRecs').innerHTML = '';
+  const limit = $('eventLimit').value;
+  try {
+    const events = await api(`/stress-events?limit=${limit}`);
+    if (!events.length) { $('eventList').innerHTML = '<div class="empty-state">No stress events yet. Run simulation advance.</div>'; return; }
+
+    let html = '';
+    events.forEach(ev => {
+      const sev = (ev.severity || 'low').toLowerCase();
+      const cls = sev === 'critical' || sev === 'high' ? 'critical' : sev === 'moderate' || sev === 'medium' ? 'moderate' : 'low';
+      html += `<div class="event-item ${cls}">
+        <div class="flex-between">
+          <div><strong>${severityTag(ev.severity)} ${esc(ev.zone_name || ev.zone_id)}</strong></div>
+          <button class="btn btn-primary btn-sm" onclick="viewEventRecs('${ev.id}')">&#128196; Recs</button>
+        </div>
+        <div class="flex mt" style="font-size:11px;color:var(--text2);gap:16px">
+          <span>&#128197; ${formatTime(ev.detected_at)}</span>
+          <span>&#9889; ${ev.predicted_peak_kw?.toFixed(1) ?? '?'} / ${ev.capacity_kw?.toFixed(1) ?? '?'} kW</span>
+        </div>
+        ${ev.reasoning ? `<div class="mt" style="font-size:12px;color:#475569;padding:6px 0">${esc(ev.reasoning)}</div>` : ''}
+      </div>`;
+    });
+    $('eventList').innerHTML = html;
+  } catch(e) { $('eventList').innerHTML = `<div class="msg msg-err">${esc(e.message)}</div>`; }
+}
+
+async function viewEventRecs(eventId) {
+  loading('eventRecs');
+  try {
+    const recs = await api(`/stress-events/${encodeURIComponent(eventId)}/recommendations`);
+    let html = `<div class="card"><div class="card-title">&#128196; Recommendations for <code>${esc(eventId.slice(0,8))}...</code></div>`;
+    if (!recs.length) { html += '<div class="msg msg-info">No recommendations for this event.</div>'; html += '</div>'; $('eventRecs').innerHTML = html; return; }
+    recs.forEach(r => {
+      html += `<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin:6px 0">
+        <div class="flex-between">
+          <div>${severityTag(r.target_type)} <strong>${esc(r.bq_household_id || 'Utility Alert')}</strong></div>
+          <div style="font-size:11px">${boolTag(r.sent)}</div>
+        </div>
+        ${r.message ? `<div style="font-size:12px;margin:4px 0;line-height:1.5">${esc(r.message)}</div>` : ''}
+        ${r.action_suggested ? `<div style="font-size:11px;color:var(--text2)">Action: ${esc(r.action_suggested)}</div>` : ''}
+      </div>`;
+    });
+    html += '</div>';
+    $('eventRecs').innerHTML = html;
+  } catch(e) { $('eventRecs').innerHTML = `<div class="msg msg-err">${esc(e.message)}</div>`; }
+}
+
+/* ===== RECOMMENDATIONS ===== */
+async function loadRecs() {
+  loading('recList');
+  const type = $('recType').value;
+  let url = '/recommendations?limit=30';
+  if (type === 'unsent') url += '&unsent_only=true';
+  try {
+    const recs = await api(url);
+    if (!recs.length) { $('recList').innerHTML = '<div class="empty-state">No recommendations found.</div>'; return; }
+    let html = '';
+    recs.forEach(r => {
+      const isHigh = r.severity === 'high' || r.severity === 'critical';
+      html += `<div class="card" style="border-left:3px solid ${isHigh ? 'var(--danger)' : r.sent ? 'var(--success)' : 'var(--amber)'}">
+        <div class="flex-between">
+          <div><span class="card-title">${severityTag(r.target_type)} ${esc(r.bq_household_id || 'Utility Alert')}</span></div>
+          <div class="flex">
+            <span style="font-size:11px;color:var(--text2);margin-right:4px">${boolTag(r.sent)}</span>
+            ${!r.sent ? `<button class="btn btn-success btn-sm" onclick="sendRec('${r.id}',this)">&#9993; Send</button>` : ''}
+          </div>
+        </div>
+        ${r.message ? `<div style="font-size:12px;margin:4px 0;line-height:1.5">${esc(r.message)}</div>` : ''}
+        ${r.action_suggested ? `<div style="font-size:11px;color:var(--text2)">&#9654; ${esc(r.action_suggested)}</div>` : ''}
+        <div style="font-size:10px;color:var(--text2);margin-top:4px">${formatTime(r.created_at)}</div>
+      </div>`;
+    });
+    $('recList').innerHTML = html;
+  } catch(e) { $('recList').innerHTML = `<div class="msg msg-err">${esc(e.message)}</div>`; }
+}
+
+async function sendRec(id, btn) {
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+  try {
+    const r = await api(`/recommendations/${id}/send`, { method: 'POST' });
+    btn.className = 'btn btn-success btn-sm';
+    btn.innerHTML = r.ok ? '&#10003; Sent' : '&#10007; Failed';
+    toast(r.ok ? 'Recommendation sent' : 'Failed to send', r.ok ? 'ok' : 'err');
+    if (!r.ok) btn.style.background = '#dc2626';
+  } catch(e) {
+    btn.className = 'btn btn-sm';
+    btn.style.background = '#dc2626';
+    btn.innerHTML = '&#10007; Error';
+    toast('Send failed: ' + e.message, 'err');
+  }
+}
+
+/* ===== SIMULATION ===== */
+async function getSimState() {
+  loading('simState');
+  try {
+    const s = await api('/simulation/state');
+    $('simState').innerHTML = `<div class="card">
+      <div class="card-title">&#128200; Simulation State</div>
+      <div style="font-size:40px;font-weight:700;color:var(--primary)">Day ${s.current_day}</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:2px">of 30-day simulation cycle</div>
+      <div style="margin-top:8px;background:#e2e8f0;border-radius:10px;height:8px;overflow:hidden">
+        <div style="height:100%;width:${(s.current_day / 30 * 100).toFixed(0)}%;background:var(--primary);border-radius:10px;transition:width .3s"></div>
+      </div>
+    </div>`;
+    if (s.current_day != null) $('dayBadge').textContent = `Day ${s.current_day}`;
+  } catch(e) { $('simState').innerHTML = `<div class="msg msg-err">${esc(e.message)}</div>`; }
+}
+
+async function advanceSim() {
+  const btn = $('advanceBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Processing...';
+  loading('simResult');
+  try {
+    const r = await api('/simulate/advance', { method: 'POST' });
+    $('dayBadge').textContent = `Day ${r.new_day}`;
+    $('simState').innerHTML = `<div class="card">
+      <div class="card-title">&#128200; Simulation State</div>
+      <div style="font-size:40px;font-weight:700;color:var(--primary)">Day ${r.new_day}</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:2px">of 30-day simulation cycle</div>
+      <div style="margin-top:8px;background:#e2e8f0;border-radius:10px;height:8px;overflow:hidden">
+        <div style="height:100%;width:${(r.new_day / 30 * 100).toFixed(0)}%;background:var(--primary);border-radius:10px;transition:width .3s"></div>
+      </div>
+    </div>`;
+
+    let html = '';
+    if (r.results?.length) {
+      html += '<div class="card"><div class="card-title">&#128200; Advance Results</div><div class="zone-grid">';
+      r.results.forEach(res => {
+        const isStress = res.stress_detected;
+        html += `<div class="zone-card" style="border-left:3px solid ${isStress ? 'var(--danger)' : 'var(--success)'}">
+          <div class="zone-card-header">
+            <div class="zone-card-name">${esc(res.zone_name)}</div>
+            ${isStress ? '<span class="tag tag-red">&#9888; STRESS</span>' : '<span class="tag tag-green">&#10003; Normal</span>'}
+          </div>
+          ${res.severity ? `<div class="zone-card-meta">${severityTag(res.severity)}</div>` : ''}
+          ${res.predicted_peak_kw != null ? `<div class="zone-card-stats"><span>&#9889; Peak: ${res.predicted_peak_kw.toFixed(1)} kW</span></div>` : ''}
+          ${res.reasoning ? `<div style="font-size:11px;color:#475569;margin-top:6px;padding:6px;background:#f8fafc;border-radius:4px">${esc(res.reasoning)}</div>` : ''}
+          ${res.nudges_generated != null ? `<div style="font-size:11px;color:var(--text2);margin-top:4px">&#9993; Nudges: ${res.nudges_generated}</div>` : ''}
+        </div>`;
+      });
+      html += '</div></div>';
+    }
+    if (r.summary) {
+      html += `<div class="card"><div class="card-title">&#128221; Summary</div><pre class="code">${esc(JSON.stringify(r.summary, null, 2))}</pre></div>`;
+    }
+    $('simResult').innerHTML = html;
+    toast(`Day ${r.new_day} complete`, r.results?.some(x => x.stress_detected) ? 'err' : 'ok');
+  } catch(e) {
+    $('simResult').innerHTML = `<div class="msg msg-err">${esc(e.message)}</div>`;
+    toast('Advance failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '&#9654; Advance +1 Day';
+  }
+}
+
+/* ===== CHAT ===== */
+async function sendChat() {
+  const input = $('chatInput');
+  const q = input.value.trim();
+  if (!q) return;
+  const hh = $('chatHhId').value.trim() || null;
+  const box = $('chatBox');
+  box.innerHTML += `<div class="chat-msg chat-user">${esc(q)}</div>`;
+  input.value = '';
+  box.scrollTop = box.scrollHeight;
+  box.innerHTML += `<div class="chat-msg chat-bot"><span class="spinner"></span></div>`;
+  box.scrollTop = box.scrollHeight;
+  try {
+    const r = await api('/chat', { method: 'POST', body: JSON.stringify({ question: q, household_id: hh }) });
+    box.removeChild(box.lastChild);
+    box.innerHTML += `<div class="chat-msg chat-bot">${esc(r.answer)}</div>`;
+    box.scrollTop = box.scrollHeight;
+  } catch(e) {
+    box.removeChild(box.lastChild);
+    box.innerHTML += `<div class="chat-msg chat-bot" style="color:var(--danger)">Error: ${esc(e.message)}</div>`;
+    box.scrollTop = box.scrollHeight;
+  }
+}
+
+/* ===== ADMIN ===== */
+async function seedHouseholds() {
+  loading('adminResult');
+  try {
+    const r = await api('/admin/seed-households', { method: 'POST' });
+    $('adminResult').innerHTML = `<div class="msg msg-ok">&#127793; ${esc(r.message || 'Seeded')} — ${r.households_seeded ?? '?'} households</div>`;
+    toast(`Seeded ${r.households_seeded ?? 0} households`, 'ok');
+  } catch(e) { $('adminResult').innerHTML = `<div class="msg msg-err">${esc(e.message)}</div>`; }
+}
+
+async function resetSim() {
+  if (!confirm('Reset simulation to day 1 and clear all stress events and recommendations?')) return;
+  loading('adminResult');
+  try {
+    const r = await api('/admin/reset-simulation', { method: 'POST' });
+    $('adminResult').innerHTML = `<div class="msg msg-ok">${esc(r.message || 'Reset complete')}</div>`;
+    $('dayBadge').textContent = 'Day 1';
+    toast('Simulation reset', 'ok');
+  } catch(e) { $('adminResult').innerHTML = `<div class="msg msg-err">${esc(e.message)}</div>`; }
+}
+
+async function runHealthCheck() {
+  loading('adminResult');
+  loading('diagResult');
+  try {
+    const h = await api('/health');
+    const a = await api('/admin/health');
+    $('adminResult').innerHTML = `<div class="msg msg-ok">&#10003; Health check passed — Day ${h.day}</div>`;
+    let diagHtml = '<div class="flex" style="gap:16px;flex-wrap:wrap">';
+    diagHtml += `<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Overall</div><div style="font-size:16px;font-weight:600">${statusDot(a.checks?.status)} ${esc(a.checks?.status || '?')}</div></div>`;
+    if (a.diagnostics?.database) {
+      const db = a.diagnostics.database;
+      diagHtml += `<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Database</div><div style="font-size:16px;font-weight:600">${statusDot(db.connected ? 'ok' : 'err')} ${db.connected ? 'Connected' : 'Down'}</div></div>`;
+      diagHtml += `<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Sim Day</div><div style="font-size:16px;font-weight:600">${db.simulation_day ?? '?'}</div></div>`;
+      diagHtml += `<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Zones</div><div style="font-size:16px;font-weight:600">${db.zones ?? '?'}</div></div>`;
+      diagHtml += `<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Households</div><div style="font-size:16px;font-weight:600">${db.households ?? '?'}</div></div>`;
+    }
+    if (a.diagnostics?.bigquery) {
+      diagHtml += `<div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">BigQuery</div><div style="font-size:16px;font-weight:600">${statusDot(a.diagnostics.bigquery.available ? 'ok' : 'err')} ${a.diagnostics.bigquery.available ? 'Available' : 'Unavailable'}</div></div>`;
+    }
+    diagHtml += '</div>';
+    diagHtml += `<pre class="code mt">${esc(JSON.stringify(a, null, 2))}</pre>`;
+    $('diagResult').innerHTML = diagHtml;
+    toast('Health check passed', 'ok');
+  } catch(e) {
+    $('adminResult').innerHTML = `<div class="msg msg-err">${esc(e.message)}</div>`;
+    $('diagResult').innerHTML = `<div class="msg msg-err">Health check failed: ${esc(e.message)}</div>`;
+  }
+}
+
+/* ===== INIT ===== */
+switchPage('dashboard');
+setInterval(() => {
+  if ($('page-dashboard').classList.contains('active')) refreshDashboard();
+}, 30000);
+</script>
+</body>
+</html>

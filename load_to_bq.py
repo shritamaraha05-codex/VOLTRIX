@@ -13,6 +13,15 @@ Requires:
 import os
 import pandas as pd
 from google.cloud import bigquery
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), "backend", ".env"))
+
+BACKEND_DIR = os.path.join(os.path.dirname(__file__), "backend")
+sa_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+if sa_path and not os.path.isabs(sa_path):
+    sa_path = os.path.join(BACKEND_DIR, sa_path)
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = sa_path
 
 GCP_PROJECT = os.environ.get("GCP_PROJECT", "voltrix-app")
 DATASET_ID = f"{GCP_PROJECT}.voltrix"
@@ -24,7 +33,7 @@ def ensure_dataset():
     dataset = bigquery.Dataset(DATASET_ID)
     dataset.location = "US"
     client.create_dataset(dataset, exists_ok=True)
-    print(f"✅ Dataset {DATASET_ID} ready")
+    print(f"[OK] Dataset {DATASET_ID} ready")
 
 
 def load_readings():
@@ -42,10 +51,13 @@ def load_readings():
 
     df = pd.read_csv("readings.csv")
     df["load_kw"] = df["load_kw"].astype(float)
+    df["timestamp"] = pd.to_datetime(
+        df["timestamp"], format="%Y-%m-%d %H:%M:%S UTC", utc=True
+    )
 
     job = client.load_table_from_dataframe(df, table_id)
     job.result()
-    print(f"✅ load_readings: {len(df):,} rows loaded")
+    print(f"[OK] load_readings: {len(df):,} rows loaded")
 
 
 def load_zone_capacity():
@@ -69,7 +81,7 @@ def load_zone_capacity():
 
     job = client.load_table_from_dataframe(df, table_id)
     job.result()
-    print(f"✅ zone_capacity: {len(df)} rows loaded")
+    print(f"[OK] zone_capacity: {len(df)} rows loaded")
 
 
 def load_households():
@@ -89,7 +101,7 @@ def load_households():
 
     job = client.load_table_from_dataframe(df, table_id)
     job.result()
-    print(f"✅ households: {len(df)} rows loaded")
+    print(f"[OK] households: {len(df)} rows loaded")
 
 
 if __name__ == "__main__":
@@ -97,7 +109,7 @@ if __name__ == "__main__":
     load_readings()
     load_zone_capacity()
     load_households()
-    print("\n🎉 All data loaded. Run the pipeline with:")
+    print("\n[OK] All data loaded. Run the pipeline with:")
     print("   1. POST /admin/seed-households   (sync households to Postgres)")
     print("   2. POST /admin/reset-simulation   (reset clock to day 1)")
     print("   3. POST /simulate/advance          (run the demo)")

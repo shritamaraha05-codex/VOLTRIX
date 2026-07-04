@@ -15,15 +15,17 @@ Environment variables required (set in .env or Cloud Run config):
 import os
 import logging
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from dotenv import load_dotenv
 
 load_dotenv()
 
 import db
 import bq as bq_module
-from forecasting import forecast_zone, detect_stress
+import ingestion
+from forecasting import forecast_zone, detect_stress, backtest_zone
 from agent import run_stress_analysis, answer_question
 from email_service import send_nudge_email, send_utility_alert, SMTP_USER
 from models import (
@@ -36,6 +38,8 @@ from models import (
     SeedResponse,
     ChatRequest,
     ChatResponse,
+    IngestResponse,
+    BacktestResponse,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -46,7 +50,7 @@ app = FastAPI(title="VOLTRIX API", version="1.0.0")
 # ─── CORS ─────────────────────────────────────────────────────────────────────
 ALLOWED_ORIGINS = os.environ.get(
     "ALLOWED_ORIGINS",
-    "http://localhost:5173,http://localhost:3000",
+    "http://localhost:5173,http://localhost:3000,null",
 ).split(",")
 
 app.add_middleware(
@@ -80,44 +84,82 @@ def zone_load_history(bq_zone_id: str, days: int = 3):
     """
     Returns hourly load data for the React zone chart.
     Merges actual (from BigQuery) with predicted (from forecasts table).
+    Forecasts are filtered to the same time window as the actuals so they
+    overlap on the chart — only forecasts whose forecast_for falls within
+    the actuals' date range are included.
     """
     zone = db.fetch_one("SELECT id FROM zones WHERE bq_zone_id = %s", (bq_zone_id,))
     if not zone:
         raise HTTPException(status_code=404, detail=f"Zone {bq_zone_id} not found")
 
-    raw = bq_module.get_zone_load_for_chart(bq_zone_id, days_back=days)
+    sim_day = db.get_simulation_day()
+    window = bq_module.get_zone_load_window(bq_zone_id, day=sim_day)
+    if not window:
+        return []
 
+    if len(window) > days * 24:
+        window = window[-(days * 24) :]
+
+    # Determine the actuals time range to scope the forecast query
+    actual_min = min(r["timestamp"] for r in window)
+    actual_max = max(r["timestamp"] for r in window)
+
+    raw = [
+        {
+            "hour": r["timestamp"].strftime("%Y-%m-%d %H:%M"),
+            "actual": round(r["load_kw"], 2),
+        }
+        for r in window
+    ]
+
+    # Fetch forecasts whose forecast_for falls within the actuals window
     forecasts = db.fetch_all(
         """
         SELECT forecast_for, predicted_load_kw
         FROM forecasts
         WHERE zone_id = %s
-        ORDER BY forecast_for DESC
-        LIMIT %s
+          AND forecast_for >= %s
+          AND forecast_for <= %s
+        ORDER BY forecast_for
         """,
-        (zone["id"], days * 24),
+        (zone["id"], actual_min, actual_max),
     )
 
-    # Build forecast map keyed on same format as chart hour labels ("MM-DD HH:MM")
+    # Build forecast map keyed on the same hour format
     forecast_map = {}
     for row in forecasts:
         try:
-            f_dt = datetime.fromisoformat(row["forecast_for"])
-            hour_key = f_dt.strftime("%m-%d %H:%M")
-            forecast_map[hour_key] = row["predicted_load_kw"]
+            raw_ts = row["forecast_for"]
+            if isinstance(raw_ts, str):
+                raw_ts = raw_ts.replace("Z", "+00:00")
+                f_dt = datetime.fromisoformat(raw_ts)
+            else:
+                f_dt = raw_ts
+            hour_key = f_dt.strftime("%Y-%m-%d %H:%M")
+            forecast_map[hour_key] = float(row["predicted_load_kw"])
         except (ValueError, TypeError):
             pass
 
-    result = []
-    for r in raw:
-        result.append(
-            ForecastPoint(
-                hour=r["hour"],
-                actual=r["actual"],
-                predicted=forecast_map.get(r["hour"]),
-            )
+    return [
+        ForecastPoint(
+            hour=r["hour"],
+            actual=r["actual"],
+            predicted=forecast_map.get(r["hour"]),
         )
-    return result
+        for r in raw
+    ]
+
+
+@app.get("/zones/{bq_zone_id}/backtest", response_model=BacktestResponse)
+def zone_backtest(bq_zone_id: str, test_days: int = 3):
+    """
+    Rolling-origin backtest of the forecasting model for one zone: trains on
+    data up to each of the last `test_days` days and compares the 24h
+    forecast against what actually happened. Returns MAPE / RMSE so accuracy
+    can be quoted with real numbers (e.g. before a demo or in the pitch).
+    """
+    day = db.get_simulation_day()
+    return backtest_zone(bq_zone_id, test_days=test_days, current_day=day)
 
 
 # ─── Stress events ────────────────────────────────────────────────────────────
@@ -479,6 +521,185 @@ def chat(body: ChatRequest):
     except Exception as e:
         logger.error(f"/chat error: {e}", exc_info=True)
         return ChatResponse(answer="Sorry, I couldn't process that right now.")
+
+
+# ─── Data ingestion (CSV upload) ───────────────────────────────────────────────
+
+
+@app.post("/ingest/readings", response_model=IngestResponse)
+async def ingest_readings(file: UploadFile = File(...)):
+    """
+    Upload a CSV of smart-meter readings to append to BigQuery's
+    load_readings table (the same table the synthetic data generator and
+    forecasting both read/write). Columns required:
+        household_id, zone_id, archetype, timestamp, load_kw
+
+    Bad/missing values are cleaned rather than rejecting the whole file:
+    unparseable timestamps and non-numeric loads are dropped, negative loads
+    are clipped to 0, extreme outliers are capped, and duplicate
+    (household_id, timestamp) rows are de-duplicated. The response reports
+    exactly what was dropped/adjusted so nothing happens silently.
+    """
+    try:
+        raw_bytes = await file.read()
+        df = ingestion.parse_readings_csv(raw_bytes)
+        cleaned, stats = ingestion.clean_readings(df)
+
+        if cleaned.empty:
+            return IngestResponse(
+                status="error",
+                rows_received=stats["rows_received"],
+                rows_loaded=0,
+                rows_rejected=stats["rows_rejected"],
+                warnings=stats["warnings"],
+                errors=["No valid rows remained after cleaning — nothing was loaded"],
+            )
+
+        bq_module.load_readings_dataframe(cleaned)
+
+        # Flag (don't block on) readings for zones not yet registered in
+        # Postgres — those rows land in BigQuery fine but won't show up in
+        # /simulate/advance until zone metadata is uploaded via /ingest/zones.
+        known_zones = db.known_zone_ids()
+        unregistered = sorted(set(cleaned["zone_id"]) - known_zones)
+        warnings = list(stats["warnings"])
+        if unregistered:
+            warnings.append(
+                f"{len(cleaned[cleaned['zone_id'].isin(unregistered)])} row(s) reference "
+                f"zone(s) not yet registered in the app: {', '.join(unregistered)}. "
+                f"Upload zone metadata via POST /ingest/zones to include them in forecasting."
+            )
+
+        return IngestResponse(
+            status="ok" if stats["rows_rejected"] == 0 else "partial",
+            rows_received=stats["rows_received"],
+            rows_loaded=stats["rows_loaded"],
+            rows_rejected=stats["rows_rejected"],
+            warnings=warnings,
+        )
+
+    except ingestion.IngestionError as e:
+        return IngestResponse(status="error", errors=[str(e)])
+    except Exception as e:
+        logger.error(f"/ingest/readings failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ingest/zones", response_model=IngestResponse)
+async def ingest_zones(file: UploadFile = File(...)):
+    """
+    Upload a CSV of zone metadata to register/update zones. Columns required:
+        zone_id, zone_name, capacity_kw
+    Upserted directly into Postgres (the operational source of truth for
+    zone capacity), so newly uploaded zones are immediately picked up by
+    /zones and /simulate/advance.
+    """
+    try:
+        raw_bytes = await file.read()
+        df = ingestion.parse_zones_csv(raw_bytes)
+        cleaned, stats = ingestion.clean_zones(df)
+
+        if cleaned.empty:
+            return IngestResponse(
+                status="error",
+                rows_received=stats["rows_received"],
+                rows_loaded=0,
+                rows_rejected=stats["rows_rejected"],
+                warnings=stats["warnings"],
+                errors=["No valid rows remained after cleaning — nothing was loaded"],
+            )
+
+        for row in cleaned.itertuples():
+            db.upsert_zone(row.zone_id, row.zone_name, float(row.capacity_kw))
+
+        return IngestResponse(
+            status="ok" if stats["rows_rejected"] == 0 else "partial",
+            rows_received=stats["rows_received"],
+            rows_loaded=stats["rows_loaded"],
+            rows_rejected=stats["rows_rejected"],
+            warnings=stats["warnings"],
+        )
+
+    except ingestion.IngestionError as e:
+        return IngestResponse(status="error", errors=[str(e)])
+    except Exception as e:
+        logger.error(f"/ingest/zones failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ingest/households", response_model=IngestResponse)
+async def ingest_households(file: UploadFile = File(...)):
+    """
+    Upload a CSV of household roster data. Columns required:
+        household_id, zone_id, name, email, archetype
+    Upserted into Postgres. Rows referencing a zone_id that isn't registered
+    yet are skipped (reported in warnings) — upload that zone via
+    /ingest/zones first.
+    """
+    try:
+        raw_bytes = await file.read()
+        df = ingestion.parse_households_csv(raw_bytes)
+        cleaned, stats = ingestion.clean_households(df)
+
+        if cleaned.empty:
+            return IngestResponse(
+                status="error",
+                rows_received=stats["rows_received"],
+                rows_loaded=0,
+                rows_rejected=stats["rows_rejected"],
+                warnings=stats["warnings"],
+                errors=["No valid rows remained after cleaning — nothing was loaded"],
+            )
+
+        skipped_unknown_zone = 0
+        for row in cleaned.itertuples():
+            ok = db.upsert_household(
+                row.household_id,
+                row.zone_id,
+                row.name or None,
+                row.email or None,
+                row.archetype,
+            )
+            if not ok:
+                skipped_unknown_zone += 1
+
+        warnings = list(stats["warnings"])
+        rows_loaded = stats["rows_loaded"] - skipped_unknown_zone
+        if skipped_unknown_zone:
+            warnings.append(
+                f"Skipped {skipped_unknown_zone} row(s) referencing a zone_id not yet "
+                f"registered — upload that zone via POST /ingest/zones first, then re-upload."
+            )
+
+        return IngestResponse(
+            status="ok"
+            if stats["rows_rejected"] == 0 and skipped_unknown_zone == 0
+            else "partial",
+            rows_received=stats["rows_received"],
+            rows_loaded=rows_loaded,
+            rows_rejected=stats["rows_rejected"] + skipped_unknown_zone,
+            warnings=warnings,
+        )
+
+    except ingestion.IngestionError as e:
+        return IngestResponse(status="error", errors=[str(e)])
+    except Exception as e:
+        logger.error(f"/ingest/households failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/ingest/template/{kind}", response_class=PlainTextResponse)
+def ingest_template(kind: str):
+    """Download an example CSV for kind in {readings, zones, households}."""
+    if kind not in ingestion.TEMPLATES:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown template kind '{kind}'. Valid kinds: {', '.join(ingestion.TEMPLATES)}",
+        )
+    return PlainTextResponse(
+        content=ingestion.TEMPLATES[kind],
+        headers={"Content-Disposition": f'attachment; filename="{kind}_template.csv"'},
+    )
 
 
 # ─── Admin / one-time seed ────────────────────────────────────────────────────

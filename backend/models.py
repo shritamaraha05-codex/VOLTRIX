@@ -97,3 +97,35 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
+
+
+# ─── Ingestion ─────────────────────────────────────────────────────────────────
+
+
+class IngestResponse(BaseModel):
+    status: str  # "ok" | "partial" | "error"
+    rows_received: int = 0
+    rows_loaded: int = 0
+    rows_rejected: int = 0
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+
+# ─── Backtesting ───────────────────────────────────────────────────────────────
+
+
+class BacktestDay(BaseModel):
+    train_day: int
+    test_day: int
+    hours_compared: int
+    mape_pct: float
+    rmse_kw: float
+
+
+class BacktestResponse(BaseModel):
+    zone_id: str
+    days_evaluated: int
+    overall_mape_pct: Optional[float] = None
+    overall_rmse_kw: Optional[float] = None
+    daily: list[BacktestDay] = Field(default_factory=list)
+    note: Optional[str] = None
