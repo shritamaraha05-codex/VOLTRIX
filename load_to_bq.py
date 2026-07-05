@@ -46,9 +46,14 @@ def load_readings():
         bigquery.SchemaField("load_kw", "FLOAT64"),
         bigquery.SchemaField("temperature_c", "FLOAT64"),
     ]
+    # Drop + recreate so the new temperature_c column is available.
+    try:
+        client.delete_table(table_id, not_found_ok=True)
+    except Exception:
+        pass
     table = bigquery.Table(table_id, schema=schema)
     table.clustering_fields = ["zone_id", "timestamp"]
-    client.create_table(table, exists_ok=True)
+    client.create_table(table)
 
     df = pd.read_csv("readings.csv")
     df["load_kw"] = df["load_kw"].astype(float)
