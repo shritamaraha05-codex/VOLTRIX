@@ -60,7 +60,7 @@ SMTP_USER=${SMTP_USER},\
 SMTP_PASSWORD=${SMTP_PASSWORD},\
 SMTP_FROM=${SMTP_FROM},\
 VOLTRIX_OPS_EMAIL=${VOLTRIX_OPS_EMAIL},\
-ALLOWED_ORIGINS=${ALLOWED_ORIGINS}"
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,null,https://voltrix-psi.vercel.app"
 
 echo ""
 echo "✅ Deployed. Service URL:"

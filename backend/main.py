@@ -56,7 +56,7 @@ app = FastAPI(title="VOLTRIX API", version="1.0.0")
 # ─── CORS ─────────────────────────────────────────────────────────────────────
 ALLOWED_ORIGINS = os.environ.get(
     "ALLOWED_ORIGINS",
-    "http://localhost:5173,http://localhost:3000,null",
+    "http://localhost:5173,http://localhost:3000,null,https://voltrix-psi.vercel.app",
 ).split(",")
 
 app.add_middleware(
