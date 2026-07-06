@@ -1,9 +1,9 @@
 // VOLTRIX Frontend Configuration
-// Edit this file before deploying to set your backend URL.
-// This file is loaded BEFORE index.html so window.__BACKEND_URL is available.
+// When running with Vite (npm run dev), leave empty to use the dev server proxy.
+// For production, set to your deployed backend URL.
 
-window.__BACKEND_URL = "http://localhost:8000";
-// For production (Cloud Run):
+window.__BACKEND_URL = "";
+// Example production URL:
 // window.__BACKEND_URL = "https://voltrix-backend-xxxxx-uc.a.run.app";
 //
 // You can also override via URL query parameter:

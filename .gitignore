@@ -36,6 +36,12 @@ Thumbs.db
 .mypy_cache/
 .pytest_cache/
 
+# Node
+node_modules/
+
+# Build output
+frontend/dist/
+
 # BigQuery / data
 *.parquet
 *.avro
