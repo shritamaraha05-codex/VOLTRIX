@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOLTRIX — Deployment Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f172a;--surface:#1e293b;--surface2:#334155;--border:#475569;
+  --text:#f1f5f9;--text2:#94a3b8;--text3:#64748b;
+  --primary:#3b82f6;--primary-hover:#2563eb;--primary-bg:rgba(59,130,246,.12);
+  --green:#22c55e;--green-bg:rgba(34,197,94,.12);
+  --amber:#f59e0b;--amber-bg:rgba(245,158,11,.12);
+  --red:#ef4444;--red-bg:rgba(239,68,68,.12);
+  --violet:#8b5cf6;--violet-bg:rgba(139,92,246,.12);
+  --cyan:#06b6d4;--cyan-bg:rgba(6,182,212,.12);
+  --radius:10px;--radius-sm:6px;
+  --mono:'JetBrains Mono',Consolas,'SF Mono',monospace;
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.7;font-size:14px}
+a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
+::selection{background:var(--primary);color:#fff}
+.container{max-width:960px;margin:0 auto;padding:40px 24px 80px}
+
+/* ─── HEADER ─── */
+.hero{text-align:center;padding:60px 0 40px;border-bottom:1px solid var(--border);margin-bottom:48px}
+.hero h1{font-size:36px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px}
+.hero h1 span{color:var(--primary)}
+.hero p{color:var(--text2);font-size:15px;max-width:520px;margin:0 auto}
+.badge-row{display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.3px;border:1px solid var(--border)}
+.badge.green{background:var(--green-bg);color:var(--green);border-color:rgba(34,197,94,.3)}
+.badge.blue{background:var(--primary-bg);color:var(--primary);border-color:rgba(59,130,246,.3)}
+.badge.amber{background:var(--amber-bg);color:var(--amber);border-color:rgba(245,158,11,.3)}
+.badge.violet{background:var(--violet-bg);color:var(--violet);border-color:rgba(139,92,246,.3)}
+
+/* ─── NAV ─── */
+.toc{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px 28px;margin-bottom:48px}
+.toc h3{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:12px}
+.toc-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px}
+@media(max-width:600px){.toc-grid{grid-template-columns:1fr}}
+.toc a{font-size:13px;padding:4px 0;display:flex;align-items:center;gap:8px;color:var(--text2);transition:color .12s}
+.toc a:hover{color:var(--primary);text-decoration:none}
+.toc a .num{color:var(--text3);font-size:11px;font-family:var(--mono);min-width:24px}
+.toc .sep{grid-column:1/-1;border-top:1px solid var(--border);margin:6px 0}
+
+/* ─── SECTION ─── */
+.section{margin-bottom:56px}
+.section-header{display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.section-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.section-header h2{font-size:20px;font-weight:700;letter-spacing:-.3px}
+.section-header p{font-size:12px;color:var(--text3);margin-top:2px}
+h3{font-size:15px;font-weight:600;margin:24px 0 10px;color:var(--text)}
+h4{font-size:13px;font-weight:600;margin:16px 0 6px;color:var(--text2)}
+
+/* ─── CARDS ─── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:14px}
+.card-title{font-size:13px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.card-title .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+
+/* ─── CODE BLOCKS ─── */
+pre{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;font-family:var(--mono);font-size:12px;line-height:1.7;overflow-x:auto;margin:10px 0;white-space:pre-wrap;word-break:break-all;color:var(--text2)}
+pre strong{color:var(--text);font-weight:500}
+code{font-family:var(--mono);font-size:12px;background:var(--surface2);padding:2px 6px;border-radius:4px;color:var(--cyan)}
+pre code{background:none;padding:0}
+
+/* ─── TABLES ─── */
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px}
+th{text-align:left;padding:8px 12px;background:var(--bg);color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:10px;border-bottom:1px solid var(--border)}
+td{padding:8px 12px;border-bottom:1px solid rgba(71,85,105,.4);vertical-align:top}
+tr:hover td{background:rgba(59,130,246,.04)}
+.req{color:var(--red);font-weight:600;font-size:10px}
+.opt{color:var(--amber);font-size:10px}
+
+/* ─── STEPS ─── */
+.step{display:flex;gap:14px;margin:14px 0;align-items:flex-start}
+.step-num{width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:2px}
+.step-body{flex:1}
+.step-body p{font-size:13px;color:var(--text2)}
+.step-body strong{color:var(--text)}
+
+/* ─── ALERTS ─── */
+.alert{padding:12px 16px;border-radius:var(--radius-sm);font-size:12px;line-height:1.6;margin:12px 0;border-left:3px solid}
+.alert.red{background:var(--red-bg);border-color:var(--red);color:#fca5a5}
+.alert.amber{background:var(--amber-bg);border-color:var(--amber);color:#fcd34d}
+.alert.green{background:var(--green-bg);border-color:var(--green);color:#86efac}
+.alert.blue{background:var(--primary-bg);border-color:var(--primary);color:#93c5fd}
+.alert strong{color:var(--text)}
+
+/* ─── TAG ─── */
+.tag{display:inline-flex;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.2px}
+.tag.yes{background:var(--green-bg);color:var(--green)}
+.tag.no{background:var(--red-bg);color:var(--red)}
+
+/* ─── MISC ─── */
+hr{border:none;border-top:1px solid var(--border);margin:32px 0}
+p{margin:6px 0}
+ul,ol{margin:8px 0 8px 20px;font-size:13px;color:var(--text2)}
+li{margin:4px 0}
+.file-tree{font-family:var(--mono);font-size:12px;line-height:1.8;color:var(--text2);padding:14px 16px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);overflow-x:auto}
+.file-tree .dir{color:var(--primary)}
+.file-tree .file{color:var(--text3)}
+.file-tree .imp{color:var(--amber);font-weight:500}
+.copy-btn{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text3);font-size:10px;padding:2px 8px;cursor:pointer;font-family:var(--mono);margin-left:8px;transition:all .12s}
+.copy-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary)}
+.inline-code{position:relative}
+@media(max-width:640px){.container{padding:20px 14px 60px}.hero h1{font-size:26px}.toc-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- ═══════════════════ HERO ═══════════════════ -->
+<div class="hero">
+  <h1><span>VOLTRIX</span> Deployment Guide</h1>
+  <p>Complete A-to-Z guide for deploying the VOLTRIX Smart Grid Dashboard — backend, frontend, database, and all services.</p>
+  <div class="badge-row">
+    <span class="badge blue">FastAPI + Python 3.11</span>
+    <span class="badge green">Supabase PostgreSQL</span>
+    <span class="badge amber">Google BigQuery</span>
+    <span class="badge violet">Google Gemma 4 31B</span>
+  </div>
+</div>
+
+<!-- ═══════════════════ TOC ═══════════════════ -->
+<div class="toc">
+  <h3>Table of Contents</h3>
+  <div class="toc-grid">
+    <a href="#prereqs"><span class="num">01</span> Prerequisites &amp; Accounts</a>
+    <a href="#arch"><span class="num">02</span> Architecture Overview</a>
+    <a href="#structure"><span class="num">03</span> Project Structure</a>
+    <a href="#env"><span class="num">04</span> Environment Variables</a>
+    <div class="sep"></div>
+    <a href="#db"><span class="num">05</span> Database Setup (Supabase)</a>
+    <a href="#bq"><span class="num">06</span> BigQuery Setup (GCP)</a>
+    <a href="#gemini"><span class="num">07</span> Gemini / ADK Setup</a>
+    <a href="#smtp"><span class="num">08</span> SMTP / Email Setup</a>
+    <div class="sep"></div>
+    <a href="#backend-local"><span class="num">09</span> Backend — Local Dev</a>
+    <a href="#backend-prod"><span class="num">10</span> Backend — Cloud Run Deploy</a>
+    <a href="#data"><span class="num">11</span> Data Ingestion</a>
+    <div class="sep"></div>
+    <a href="#frontend-local"><span class="num">12</span> Frontend — Local Dev (Vite)</a>
+    <a href="#frontend-prod"><span class="num">13</span> Frontend — Production Deploy</a>
+    <a href="#api"><span class="num">14</span> API Reference</a>
+    <a href="#troubleshoot"><span class="num">15</span> Troubleshooting</a>
+  </div>
+</div>
+
+<!-- ═══════════════════ 01. PREREQS ═══════════════════ -->
+<div class="section" id="prereqs">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--primary-bg);color:var(--primary)">&#9881;</div>
+    <div><h2>01 &mdash; Prerequisites &amp; Accounts</h2><p>Everything you need before starting</p></div>
+  </div>
+
+  <h3>Accounts Required</h3>
+  <table>
+    <tr><th>Service</th><th>Purpose</th><th>Free Tier?</th></tr>
+    <tr><td><strong>Supabase</strong></td><td>PostgreSQL database (zones, households, forecasts, stress events, recommendations)</td><td>Yes — 500 MB, 50K rows</td></tr>
+    <tr><td><strong>Google Cloud Platform</strong></td><td>BigQuery (load data), Cloud Run (backend hosting), Gemini API (AI agent)</td><td>$300 free credits for new accounts</td></tr>
+    <tr><td><strong>Gmail</strong> (or any SMTP)</td><td>Email delivery for nudge/utility alerts</td><td>Yes — use Gmail App Password</td></tr>
+    <tr><td><strong>Vercel</strong> (optional)</td><td>Frontend static hosting</td><td>Yes — unlimited static sites</td></tr>
+  </table>
+
+  <h3>Software Required</h3>
+  <table>
+    <tr><th>Tool</th><th>Version</th><th>Install</th></tr>
+    <tr><td><strong>Python</strong></td><td>3.11+ (3.11 recommended for Docker parity)</td><td><code>python.org</code></td></tr>
+    <tr><td><strong>Node.js</strong></td><td>18+ (for Vite)</td><td><code>nodejs.org</code></td></tr>
+    <tr><td><strong>Git</strong></td><td>Any recent</td><td><code>git-scm.com</code></td></tr>
+    <tr><td><strong>gcloud CLI</strong></td><td>Latest (for Cloud Run deploy only)</td><td><code>cloud.google.com/sdk</code></td></tr>
+    <tr><td><strong>Docker</strong></td><td>Latest (for Cloud Run build only)</td><td><code>docker.com</code></td></tr>
+  </table>
+</div>
+
+<!-- ═══════════════════ 02. ARCHITECTURE ═══════════════════ -->
+<div class="section" id="arch">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--cyan-bg);color:var(--cyan)">&#9670;</div>
+    <div><h2>02 &mdash; Architecture Overview</h2><p>How all the pieces connect</p></div>
+  </div>
+
+  <div class="card">
+    <pre>
+┌─────────────────┐     ┌─────────────────────┐     ┌──────────────────┐
+│                 │     │                     │     │                  │
+│   FRONTEND      │────▶│   BACKEND (FastAPI) │────▶│  Supabase DB     │
+│   Vite + HTML   │     │   :8000             │     │  PostgreSQL      │
+│   :5173 (dev)   │     │                     │     │                  │
+│                 │◀────│   /health           │◀────│  zones           │
+└─────────────────┘     │   /zones            │     │  households      │
+                        │   /stress-events    │     │  forecasts       │
+                        │   /recommendations  │     │  stress_events   │
+                        │   /simulate/advance │     │  recommendations │
+                        │   /chat (SSE)       │     │  simulation_state│
+                        │   /ingest/*         │     └──────────────────┘
+                        │   /admin/*          │
+                        └────────┬────────────┘
+                                 │
+               ┌─────────────────┼─────────────────┐
+               │                 │                 │
+               ▼                 ▼                 ▼
+     ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+     │  BigQuery     │  │  Gemini 4    │  │  SMTP        │
+     │  voltrix      │  │  31B (ADK)   │  │  Gmail       │
+     │  load_readings│  │  Agent       │  │  Email       │
+     │  zone_capacity│  │  + Chat      │  │  Delivery    │
+     │  households   │  │              │  │              │
+     └──────────────┘  └──────────────┘  └──────────────┘</pre>
+  </div>
+
+  <div class="alert blue"><strong>Flow:</strong> Frontend calls Backend API → Backend reads/writes Supabase (zones, households, forecasts, stress events, recommendations) → Backend reads load data from BigQuery → Backend calls Gemini for AI reasoning + chat → Backend sends emails via SMTP.</div>
+</div>
+
+<!-- ═══════════════════ 03. PROJECT STRUCTURE ═══════════════════ -->
+<div class="section" id="structure">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--violet-bg);color:var(--violet)">&#128193;</div>
+    <div><h2>03 &mdash; Project Structure</h2><p>File-by-file breakdown</p></div>
+  </div>
+
+  <div class="file-tree">
+<span class="dir">VOLTRIX/</span>
+├── <span class="imp">backend/</span>
+│   ├── <span class="imp">main.py</span>              ← FastAPI app, all API endpoints, pipeline orchestration
+│   ├── <span class="imp">agent.py</span>             ← Google ADK agent (3 tools) + Gemma chat streaming
+│   ├── <span class="imp">forecasting.py</span>       ← Seasonal-trend forecast model + stress detection
+│   ├── <span class="imp">db.py</span>                ← Supabase Postgres connection pool + domain queries
+│   ├── <span class="imp">bq.py</span>                ← BigQuery client (read load data, seed households)
+│   ├── <span class="imp">ingestion.py</span>         ← CSV upload validation + cleaning
+│   ├── <span class="imp">email_service.py</span>     ← SMTP email delivery (stdlib smtplib)
+│   ├── <span class="imp">models.py</span>            ← Pydantic request/response schemas
+│   ├── <span class="imp">schema.sql</span>           ← Postgres DDL (run once to create tables)
+│   ├── <span class="imp">Dockerfile</span>           ← Cloud Run container definition
+│   ├── <span class="imp">deploy.sh</span>            ← One-command Cloud Run deploy
+│   ├── <span class="imp">run.sh</span>               ← Local dev launcher (sources .env)
+│   ├── <span class="imp">requirements.txt</span>     ← Python dependencies
+│   ├── <span class="imp">.env</span>                 ← <span style="color:var(--red)">ACTIVE credentials (never commit!)</span>
+│   ├── <span class="imp">.env.example</span>         ← Template — copy this
+│   ├── <span class="imp">.env.production</span>       ← Production Cloud Run env template
+│   └── <span class="imp">service-account.json</span> ← GCP service account key (never commit!)
+│
+├── <span class="dir">frontend/</span>
+│   ├── <span class="imp">index.html</span>           ← Complete dashboard SPA (986 lines, 7 pages)
+│   ├── <span class="imp">config.js</span>            ← Backend URL config
+│   ├── <span class="imp">package.json</span>         ← Vite dev dependency
+│   ├── <span class="imp">vite.config.js</span>       ← Dev server + API proxy config
+│   ├── <span class="imp">vercel.json</span>          ← Vercel hosting config
+│   └── <span class="imp">deploy.sh</span>            ← Build script
+│
+├── <span class="file">generate.py</span>              ← Synthetic data generator (readings, zones, households)
+├── <span class="file">load_to_bq.py</span>            ← Loads CSVs into BigQuery
+├── <span class="file">api_test.html</span>            ← Standalone v1.0 test dashboard
+├── <span class="file">households.csv</span>           ← 60 household records
+├── <span class="file">readings.csv</span>             ← 43,200 hourly load readings
+└── <span class="file">zones.csv</span>                ← 5 zone metadata records</div>
+</div>
+
+<!-- ═══════════════════ 04. ENV VARS ═══════════════════ -->
+<div class="section" id="env">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--amber-bg);color:var(--amber)">&#128273;</div>
+    <div><h2>04 &mdash; Environment Variables</h2><p>Complete reference for every env var</p></div>
+  </div>
+
+  <div class="alert red"><strong>SECURITY:</strong> Never commit <code>.env</code> or <code>service-account.json</code> to git. They are in <code>.gitignore</code> but always double-check.</div>
+
+  <h3>Copy <code>backend/.env.example</code> to <code>backend/.env</code> and fill in:</h3>
+
+  <table>
+    <tr><th>Variable</th><th>Required</th><th>Example</th><th>Where to Get It</th></tr>
+    <tr>
+      <td><code>DATABASE_URL</code></td>
+      <td><span class="req">YES</span></td>
+      <td><code>postgresql://postgres:PASSWORD@db.REF.supabase.co:5432/postgres</code></td>
+      <td>Supabase Dashboard → Settings → Database → Connection string → URI</td>
+    </tr>
+    <tr>
+      <td><code>GCP_PROJECT</code></td>
+      <td><span class="req">YES</span></td>
+      <td><code>voltrix-501307</code></td>
+      <td>GCP Console → Project info → Project ID</td>
+    </tr>
+    <tr>
+      <td><code>GEMINI_API_KEY</code></td>
+      <td><span class="req">YES</span></td>
+      <td><code>AIzaSy...</code></td>
+      <td><a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a> → Create API Key</td>
+    </tr>
+    <tr>
+      <td><code>GOOGLE_APPLICATION_CREDENTIALS</code></td>
+      <td><span class="opt">LOCAL ONLY</span></td>
+      <td><code>service-account.json</code></td>
+      <td>GCP Console → IAM → Service Accounts → Create key (JSON). Cloud Run uses its own identity instead.</td>
+    </tr>
+    <tr>
+      <td><code>SMTP_HOST</code></td>
+      <td><span class="req">YES</span></td>
+      <td><code>smtp.gmail.com</code></td>
+      <td>Gmail: <code>smtp.gmail.com</code> / Outlook: <code>smtp.office365.com</code></td>
+    </tr>
+    <tr>
+      <td><code>SMTP_PORT</code></td>
+      <td><span class="req">YES</span></td>
+      <td><code>587</code></td>
+      <td><code>587</code> (STARTTLS) or <code>465</code> (SSL)</td>
+    </tr>
+    <tr>
+      <td><code>SMTP_USER</code></td>
+      <td><span class="req">YES</span></td>
+      <td><code>your-email@gmail.com</code></td>
+      <td>Your email address</td>
+    </tr>
+    <tr>
+      <td><code>SMTP_PASSWORD</code></td>
+      <td><span class="req">YES</span></td>
+      <td><code>xxxx xxxx xxxx xxxx</code></td>
+      <td>Gmail → Google Account → Security → 2FA → App Passwords. <strong>Use App Password, not account password.</strong></td>
+    </tr>
+    <tr>
+      <td><code>SMTP_FROM</code></td>
+      <td><span class="req">YES</span></td>
+      <td><code>VOLTRIX Alerts &lt;you@gmail.com&gt;</code></td>
+      <td>Display name for outgoing emails</td>
+    </tr>
+    <tr>
+      <td><code>VOLTRIX_OPS_EMAIL</code></td>
+      <td><span class="req">YES</span></td>
+      <td><code>ops@yourcompany.com</code></td>
+      <td>Recipient for utility-level grid stress alerts</td>
+    </tr>
+    <tr>
+      <td><code>ALLOWED_ORIGINS</code></td>
+      <td><span class="req">YES</span></td>
+      <td><code>http://localhost:5173,http://localhost:3000,null</code></td>
+      <td>Comma-separated list of frontend URLs. Add your production URL here.</td>
+    </tr>
+    <tr>
+      <td><code>PORT</code></td>
+      <td><span class="opt">CLOUD RUN</span></td>
+      <td><code>8080</code></td>
+      <td>Set automatically by Cloud Run. Locally defaults to 8000.</td>
+    </tr>
+  </table>
+
+  <h3>Example <code>.env</code> file:</h3>
+  <pre>
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@db.YOUR_REF.supabase.co:5432/postgres
+GCP_PROJECT=your-gcp-project-id
+GEMINI_API_KEY=AIzaSy...
+GOOGLE_APPLICATION_CREDENTIALS=service-account.json
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM=VOLTRIX Alerts &lt;your-email@gmail.com&gt;
+VOLTRIX_OPS_EMAIL=ops@yourcompany.com
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,null,https://your-app.vercel.app</pre>
+</div>
+
+<!-- ═══════════════════ 05. DATABASE ═══════════════════ -->
+<div class="section" id="db">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--green-bg);color:var(--green)">&#128451;</div>
+    <div><h2>05 &mdash; Database Setup (Supabase)</h2><p>Create the PostgreSQL schema</p></div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <p><strong>Create a Supabase project</strong> at <a href="https://supabase.com" target="_blank">supabase.com</a>. Choose a region close to your users. Note your <strong>project password</strong>.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <p><strong>Get your connection string.</strong> Go to Project Settings → Database → Connection string → URI. Copy the full URI.</p>
+      <pre>postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-REF].supabase.co:5432/postgres</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <p><strong>Run the schema.</strong> Go to the SQL Editor in Supabase dashboard, paste the contents of <code>backend/schema.sql</code>, and click "Run".</p>
+      <p>This creates 6 tables: <code>zones</code>, <code>households</code>, <code>forecasts</code>, <code>stress_events</code>, <code>recommendations</code>, <code>simulation_state</code> — plus indexes and seed data for 5 zones.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <p><strong>Paste the connection string</strong> into your <code>.env</code> as <code>DATABASE_URL</code>.</p>
+    </div>
+  </div>
+
+  <h3>Tables Created</h3>
+  <table>
+    <tr><th>Table</th><th>Purpose</th><th>Key Fields</th></tr>
+    <tr><td><code>zones</code></td><td>Grid zones (wards)</td><td>bq_zone_id, name, baseline_capacity_kw, household_count</td></tr>
+    <tr><td><code>households</code></td><td>Individual households</td><td>bq_household_id, zone_id (FK), archetype, email</td></tr>
+    <tr><td><code>forecasts</code></td><td>Hourly load predictions</td><td>zone_id (FK), forecast_for, predicted_load_kw, actual_load_kw</td></tr>
+    <tr><td><code>stress_events</code></td><td>Detected grid stress</td><td>zone_id (FK), severity, predicted_peak_kw, capacity_kw, reasoning</td></tr>
+    <tr><td><code>recommendations</code></td><td>AI-generated nudges/alerts</td><td>stress_event_id (FK), target_type, message, sent</td></tr>
+    <tr><td><code>simulation_state</code></td><td>Day counter (singleton)</td><td>current_day (1-30)</td></tr>
+  </table>
+</div>
+
+<!-- ═══════════════════ 06. BIGQUERY ═══════════════════ -->
+<div class="section" id="bq">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--amber-bg);color:var(--amber)">&#9729;</div>
+    <div><h2>06 &mdash; BigQuery Setup (GCP)</h2><p>Load smart-meter data into Google BigQuery</p></div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <p><strong>Create a GCP project</strong> at <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a>. Note the <strong>Project ID</strong>.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <p><strong>Enable BigQuery API</strong> in the GCP Console → APIs & Services → Enable APIs → search "BigQuery API" → Enable.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <p><strong>Create a service account</strong> with roles: <code>BigQuery Data Editor</code>, <code>BigQuery Job User</code>. Download the JSON key and save as <code>backend/service-account.json</code>.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <p><strong>Set <code>GCP_PROJECT</code></strong> in your <code>.env</code> to your project ID.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <p><strong>Load the CSV data</strong> into BigQuery using the provided script:</p>
+      <pre>cd backend
+pip install -r requirements.txt
+python ../load_to_bq.py</pre>
+      <p>This creates dataset <code>voltrix</code> and 3 tables:</p>
+      <ul>
+        <li><code>voltrix.load_readings</code> — 43,200 hourly readings (clustered by zone_id, timestamp)</li>
+        <li><code>voltrix.zone_capacity</code> — 5 zone metadata rows</li>
+        <li><code>voltrix.households</code> — 60 household records</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>BigQuery Tables</h3>
+  <table>
+    <tr><th>Table</th><th>Columns</th><th>Rows</th></tr>
+    <tr><td><code>voltrix.load_readings</code></td><td>household_id, zone_id, archetype, timestamp, load_kw, temperature_c</td><td>43,200</td></tr>
+    <tr><td><code>voltrix.zone_capacity</code></td><td>zone_id, zone_name, baseline_capacity_kw, household_count</td><td>5</td></tr>
+    <tr><td><code>voltrix.households</code></td><td>household_id, zone_id, name, email, archetype</td><td>60</td></tr>
+  </table>
+
+  <div class="alert amber"><strong>For Cloud Run production:</strong> The backend uses the Cloud Run service account identity for BigQuery access. You do NOT need <code>GOOGLE_APPLICATION_CREDENTIALS</code> in production — just ensure the Cloud Run service account has BigQuery roles.</div>
+</div>
+
+<!-- ═══════════════════ 07. GEMINI ═══════════════════ -->
+<div class="section" id="gemini">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--violet-bg);color:var(--violet)">&#129504;</div>
+    <div><h2>07 &mdash; Gemini / ADK Setup</h2><p>AI agent for stress analysis and chat</p></div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <p><strong>Get a Gemini API Key</strong> from <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a> → Create API Key.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <p><strong>Set <code>GEMINI_API_KEY</code></strong> in your <code>.env</code>. The backend also sets <code>GOOGLE_API_KEY</code> automatically (required by Google ADK).</p>
+    </div>
+  </div>
+
+  <h3>What the AI Does</h3>
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--violet)"></span>Agent: <code>voltrix_grid_intelligence_agent</code></div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:8px">Model: <strong>gemma-4-31b-it</strong> (Google Gemma 4 31B Instruct) via AI Studio</p>
+    <p style="font-size:12px;color:var(--text2)"><strong>3 Tools:</strong></p>
+    <ul>
+      <li><strong>get_zone_details</strong> — Calculates overage %, risk level (critical/moderate) from predicted peak vs capacity</li>
+      <li><strong>analyse_stress_cause</strong> — Determines root causes (evening peak, WFH load, family appliances, etc.)</li>
+      <li><strong>generate_household_nudges</strong> — Creates personalized energy-saving messages per household archetype</li>
+    </ul>
+    <p style="font-size:12px;color:var(--text2);margin-top:8px"><strong>Chat:</strong> Uses <code>google-genai</code> SDK directly (no ADK) for SSE streaming. Token-by-token response via Server-Sent Events.</p>
+  </div>
+
+  <div class="alert green"><strong>Free tier:</strong> Gemini API has a generous free tier. Check <a href="https://ai.google.dev/pricing" target="_blank">pricing</a> for current limits.</div>
+</div>
+
+<!-- ═══════════════════ 08. SMTP ═══════════════════ -->
+<div class="section" id="smtp">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--red-bg);color:var(--red)">&#9993;</div>
+    <div><h2>08 &mdash; SMTP / Email Setup</h2><p>Configure email delivery for alerts</p></div>
+  </div>
+
+  <h3>Gmail Setup (Recommended for Testing)</h3>
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body"><p>Enable <strong>2-Factor Authentication</strong> on your Google Account.</p></div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body"><p>Go to <a href="https://myaccount.google.com/apppasswords" target="_blank">Google App Passwords</a> → Generate a new app password for "Mail".</p></div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <p>Set these in your <code>.env</code>:</p>
+      <pre>SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=xxxx xxxx xxxx xxxx
+SMTP_FROM=VOLTRIX Alerts &lt;your-email@gmail.com&gt;
+VOLTRIX_OPS_EMAIL=ops-recipient@gmail.com</pre>
+    </div>
+  </div>
+
+  <h3>Email Types Sent</h3>
+  <table>
+    <tr><th>Type</th><th>Trigger</th><th>Recipient</th></tr>
+    <tr><td><strong>Nudge Email</strong></td><td>User clicks "Send" on a household recommendation</td><td>Household's email from DB</td></tr>
+    <tr><td><strong>Utility Alert</strong></td><td>User clicks "Send" on a utility recommendation</td><td><code>VOLTRIX_OPS_EMAIL</code></td></tr>
+  </table>
+
+  <div class="alert amber"><strong>Gmail limits:</strong> Free Gmail accounts send ~500 emails/day. For production, use a transactional email service like SendGrid, Mailgun, or AWS SES.</div>
+</div>
+
+<!-- ═══════════════════ 09. BACKEND LOCAL ═══════════════════ -->
+<div class="section" id="backend-local">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--green-bg);color:var(--green)">&#9654;</div>
+    <div><h2>09 &mdash; Backend — Local Development</h2><p>Run the FastAPI server locally</p></div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <p><strong>Clone the repo and navigate to backend:</strong></p>
+      <pre>git clone https://github.com/shritamaraha05-codex/VOLTRIX.git
+cd VOLTRIX/backend</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <p><strong>Create a virtual environment and install dependencies:</strong></p>
+      <pre>python -m venv .venv
+
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
+
+pip install -r requirements.txt</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <p><strong>Configure environment variables:</strong></p>
+      <pre>cp .env.example .env
+# Edit .env with your credentials (see Section 04)</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <p><strong>Run the server:</strong></p>
+      <pre># Option A — use the launcher script:
+bash run.sh
+
+# Option B — manual:
+set -a && source .env && set +a
+uvicorn main:app --reload --port 8000 --log-level info</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <p><strong>Verify:</strong> Open <a href="http://localhost:8000/docs" target="_blank">http://localhost:8000/docs</a> — you should see the Swagger UI with all endpoints.</p>
+      <pre>curl http://localhost:8000/health
+# → {"status":"ok","service":"voltrix-api","day":1}</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ 10. BACKEND PROD ═══════════════════ -->
+<div class="section" id="backend-prod">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--primary-bg);color:var(--primary)">&#9729;</div>
+    <div><h2>10 &mdash; Backend — Cloud Run Deploy</h2><p>Deploy to Google Cloud Run</p></div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <p><strong>Install and authenticate gcloud CLI:</strong></p>
+      <pre>gcloud auth login
+gcloud config set project YOUR_PROJECT_ID</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <p><strong>Enable required GCP APIs:</strong></p>
+      <pre>gcloud services enable run.googleapis.com
+gcloud services enable containerregistry.googleapis.com
+gcloud services enable bigquery.googleapis.com</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <p><strong>Set environment variables in your shell</strong> (or edit <code>deploy.sh</code>):</p>
+      <pre>export PROJECT_ID="your-gcp-project-id"
+export DATABASE_URL="postgresql://postgres:PASSWORD@db.REF.supabase.co:5432/postgres"
+export GEMINI_API_KEY="AIzaSy..."
+export SMTP_HOST="smtp.gmail.com"
+export SMTP_PORT="587"
+export SMTP_USER="your-email@gmail.com"
+export SMTP_PASSWORD="your-app-password"
+export SMTP_FROM="VOLTRIX Alerts &lt;your-email@gmail.com&gt;"
+export VOLTRIX_OPS_EMAIL="ops@yourcompany.com"
+export ALLOWED_ORIGINS="https://your-app.vercel.app,https://your-app.pages.dev"</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <p><strong>Deploy with one command</strong> (edit <code>backend/deploy.sh</code> first with your project ID):</p>
+      <pre>cd backend
+bash deploy.sh</pre>
+      <p>This builds the Docker image, pushes to GCR, and deploys to Cloud Run. Takes 2-5 minutes.</p>
+    </div>
+  </div>
+
+  <h3>Dockerfile Breakdown</h3>
+  <pre>
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+ENV PORT=8080
+EXPOSE 8080
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]</pre>
+
+  <h3>Cloud Run Settings</h3>
+  <table>
+    <tr><th>Setting</th><th>Value</th></tr>
+    <tr><td>Memory</td><td>2 GB</td></tr>
+    <tr><td>CPU</td><td>2</td></tr>
+    <tr><td>Timeout</td><td>120 seconds</td></tr>
+    <tr><td>Concurrency</td><td>40</td></tr>
+    <tr><td>Region</td><td>us-central1</td></tr>
+    <tr><td>Auth</td><td>Allow unauthenticated (public API)</td></tr>
+  </table>
+
+  <div class="alert green"><strong>After deploy:</strong> Cloud Run gives you a URL like <code>https://voltrix-backend-xxxxx-uc.a.run.app</code>. Set this in <code>frontend/config.js</code> as <code>window.__BACKEND_URL</code>.</div>
+</div>
+
+<!-- ═══════════════════ 11. DATA ═══════════════════ -->
+<div class="section" id="data">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--cyan-bg);color:var(--cyan)">&#128202;</div>
+    <div><h2>11 &mdash; Data Ingestion</h2><p>Load CSV data into the system</p></div>
+  </div>
+
+  <h3>Option A: Use Pre-Generated CSVs (Quick Start)</h3>
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <p><strong>Load into BigQuery:</strong></p>
+      <pre>cd backend
+python ../load_to_bq.py</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <p><strong>Seed households into Postgres</strong> (via the admin API or dashboard):</p>
+      <pre>curl -X POST http://localhost:8000/admin/seed-households</pre>
+    </div>
+  </div>
+
+  <h3>Option B: Generate Fresh Data</h3>
+  <pre>python generate.py
+# Creates: readings.csv, zones.csv, households.csv
+# Then load with load_to_bq.py as above</pre>
+
+  <h3>Option C: Upload via Dashboard</h3>
+  <p>Use the <strong>Admin</strong> page in the frontend dashboard. Upload CSV files directly through the browser. Supported types:</p>
+  <table>
+    <tr><th>Upload Type</th><th>Required Columns</th><th>Destination</th></tr>
+    <tr><td>Readings</td><td>household_id, zone_id, archetype, timestamp, load_kw</td><td>BigQuery <code>voltrix.load_readings</code></td></tr>
+    <tr><td>Zones</td><td>zone_id, zone_name, capacity_kw</td><td>Postgres <code>zones</code></td></tr>
+    <tr><td>Households</td><td>household_id, zone_id, name, email, archetype</td><td>Postgres <code>households</code></td></tr>
+  </table>
+
+  <h3>Data Files Reference</h3>
+  <table>
+    <tr><th>File</th><th>Rows</th><th>Description</th></tr>
+    <tr><td><code>readings.csv</code></td><td>43,200</td><td>5 zones × 12 households × 30 days × 24 hours of load data</td></tr>
+    <tr><td><code>zones.csv</code></td><td>5</td><td>Zone metadata with calibrated capacity (34-44 kW)</td></tr>
+    <tr><td><code>households.csv</code></td><td>60</td><td>Household roster with 5 archetypes (family, single_professional, wfh, retired, small_business)</td></tr>
+  </table>
+</div>
+
+<!-- ═══════════════════ 12. FRONTEND LOCAL ═══════════════════ -->
+<div class="section" id="frontend-local">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--green-bg);color:var(--green)">&#127760;</div>
+    <div><h2>12 &mdash; Frontend — Local Development (Vite)</h2><p>Run the dashboard with hot reload</p></div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <p><strong>Navigate to frontend and install dependencies:</strong></p>
+      <pre>cd frontend
+npm install</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <p><strong>Configure backend URL.</strong> Edit <code>config.js</code>:</p>
+      <pre>// For local dev with Vite proxy — leave empty:
+window.__BACKEND_URL = "";
+
+// For pointing to a deployed backend:
+window.__BACKEND_URL = "https://voltrix-backend-xxxxx-uc.a.run.app";</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <p><strong>Start the dev server:</strong></p>
+      <pre>npm run dev</pre>
+      <p>Opens at <a href="http://localhost:5173" target="_blank">http://localhost:5173</a>. Vite proxies all API calls to <code>localhost:8000</code>.</p>
+    </div>
+  </div>
+
+  <div class="alert blue"><strong>Prerequisite:</strong> The backend must be running on <code>localhost:8000</code> for the Vite proxy to work. Start the backend first (Section 09).</div>
+
+  <h3>Vite Proxy Routes</h3>
+  <p>All these paths are proxied from port 5173 → port 8000:</p>
+  <pre>/health, /zones, /stress-events, /recommendations,
+/simulation, /simulate, /chat, /ingest, /admin</pre>
+</div>
+
+<!-- ═══════════════════ 13. FRONTEND PROD ═══════════════════ -->
+<div class="section" id="frontend-prod">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--primary-bg);color:var(--primary)">&#128640;</div>
+    <div><h2>13 &mdash; Frontend — Production Deploy</h2><p>Build and deploy the dashboard</p></div>
+  </div>
+
+  <h3>Build</h3>
+  <pre>cd frontend
+npm run build
+# Output: frontend/dist/index.html (single file, ~55KB)</pre>
+
+  <h3>Deploy to Vercel (Recommended)</h3>
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <p><strong>Edit <code>config.js</code></strong> with your deployed backend URL:</p>
+      <pre>window.__BACKEND_URL = "https://voltrix-backend-xxxxx-uc.a.run.app";</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <p><strong>Rebuild and deploy:</strong></p>
+      <pre>npm run build
+npx vercel --prod</pre>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <p><strong>Update CORS:</strong> Add your Vercel URL to <code>ALLOWED_ORIGINS</code> in the backend <code>.env</code> and redeploy.</p>
+    </div>
+  </div>
+
+  <h3>Deploy to Netlify</h3>
+  <pre>npm run build
+npx netlify deploy --prod --dir=dist</pre>
+
+  <h3>Deploy to Any Static Host</h3>
+  <p>The build output is a single <code>dist/index.html</code> file. Upload the <code>dist/</code> folder to any static host (GitHub Pages, Cloudflare Pages, Nginx, etc.).</p>
+
+  <div class="alert red"><strong>Important:</strong> After deploying, add your frontend URL to <code>ALLOWED_ORIGINS</code> in the backend <code>.env</code> or Cloud Run env vars, otherwise API calls will be blocked by CORS.</div>
+</div>
+
+<!-- ═══════════════════ 14. API REFERENCE ═══════════════════ -->
+<div class="section" id="api">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--amber-bg);color:var(--amber)">&#128268;</div>
+    <div><h2>14 &mdash; API Reference</h2><p>All backend endpoints</p></div>
+  </div>
+
+  <table>
+    <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+    <tr><td><span class="tag yes">GET</span></td><td><code>/health</code></td><td>Health check — returns status + simulation day</td></tr>
+    <tr><td><span class="tag yes">GET</span></td><td><code>/zones</code></td><td>List all zones</td></tr>
+    <tr><td><span class="tag yes">GET</span></td><td><code>/zones/{zone_id}/load-history?days=3</code></td><td>Merged actual (BigQuery) + predicted (forecasts) load data</td></tr>
+    <tr><td><span class="tag yes">GET</span></td><td><code>/zones/{zone_id}/backtest?test_days=3</code></td><td>Rolling-origin forecast backtest (MAPE/RMSE)</td></tr>
+    <tr><td><span class="tag yes">GET</span></td><td><code>/stress-events?limit=20</code></td><td>List stress events (newest first)</td></tr>
+    <tr><td><span class="tag yes">GET</span></td><td><code>/stress-events/{event_id}</code></td><td>Single stress event details</td></tr>
+    <tr><td><span class="tag yes">GET</span></td><td><code>/stress-events/{event_id}/recommendations</code></td><td>Recommendations for one event</td></tr>
+    <tr><td><span class="tag yes">GET</span></td><td><code>/recommendations?limit=50&unsent_only=false</code></td><td>List all recommendations</td></tr>
+    <tr><td><span class="tag yes" style="background:var(--primary-bg);color:var(--primary)">POST</span></td><td><code>/recommendations/{id}/send</code></td><td>Send email for a recommendation</td></tr>
+    <tr><td><span class="tag yes">GET</span></td><td><code>/simulation/state</code></td><td>Current simulation day</td></tr>
+    <tr><td><span class="tag yes" style="background:var(--primary-bg);color:var(--primary)">POST</span></td><td><code>/simulate/advance</code></td><td><strong>Main pipeline:</strong> advance 1 day, run forecast, detect stress, generate recs</td></tr>
+    <tr><td><span class="tag yes" style="background:var(--primary-bg);color:var(--primary)">POST</span></td><td><code>/chat</code></td><td>SSE streaming chat with Gemma 4 31B</td></tr>
+    <tr><td><span class="tag yes" style="background:var(--primary-bg);color:var(--primary)">POST</span></td><td><code>/ingest/readings</code></td><td>Upload readings CSV to BigQuery</td></tr>
+    <tr><td><span class="tag yes" style="background:var(--primary-bg);color:var(--primary)">POST</span></td><td><code>/ingest/zones</code></td><td>Upload zones CSV to Postgres</td></tr>
+    <tr><td><span class="tag yes" style="background:var(--primary-bg);color:var(--primary)">POST</span></td><td><code>/ingest/households</code></td><td>Upload households CSV to Postgres</td></tr>
+    <tr><td><span class="tag yes">GET</span></td><td><code>/ingest/template/{kind}</code></td><td>Download example CSV template</td></tr>
+    <tr><td><span class="tag yes" style="background:var(--primary-bg);color:var(--primary)">POST</span></td><td><code>/admin/seed-households</code></td><td>Seed households from BigQuery → Postgres</td></tr>
+    <tr><td><span class="tag yes">GET</span></td><td><code>/admin/health</code></td><td>Detailed diagnostics (DB, env vars, zones, households)</td></tr>
+    <tr><td><span class="tag yes" style="background:var(--primary-bg);color:var(--primary)">POST</span></td><td><code>/admin/reset-simulation</code></td><td>Reset to day 1, clear all events + recs + forecasts</td></tr>
+  </table>
+
+  <h3>Typical Workflow</h3>
+  <pre>
+1. POST /admin/seed-households    ← Seed household data into Postgres
+2. POST /simulate/advance         ← Day 1: generate load, forecast, detect stress
+3. POST /simulate/advance         ← Day 2: repeat...
+   ... (up to day 30)
+4. GET  /stress-events            ← View detected stress events
+5. GET  /recommendations          ← View AI-generated recommendations
+6. POST /recommendations/{id}/send ← Send email alerts
+7. POST /chat                     ← Ask the AI assistant questions</pre>
+</div>
+
+<!-- ═══════════════════ 15. TROUBLESHOOT ═══════════════════ -->
+<div class="section" id="troubleshoot">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--red-bg);color:var(--red)">&#128736;</div>
+    <div><h2>15 &mdash; Troubleshooting</h2><p>Common issues and fixes</p></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--red)"></span><code>psycopg2-binary</code> fails to install</div>
+    <p style="font-size:12px;color:var(--text2)">Version 2.9.9 has no pre-built wheel for Python 3.14. Fix: unpin in <code>requirements.txt</code>:</p>
+    <pre>psycopg2-binary>=2.9.9</pre>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--red)"></span><code>pandas</code> fails to install (no <code>pg_config</code> / <code>vswhere.exe</code>)</div>
+    <p style="font-size:12px;color:var(--text2)">Pinned version has no wheel for your Python. Fix: unpin:</p>
+    <pre>pandas>=2.2.2
+numpy>=1.26.4</pre>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--amber)"></span>CORS errors in browser console</div>
+    <p style="font-size:12px;color:var(--text2)">Your frontend URL is not in <code>ALLOWED_ORIGINS</code>. Add it (including <code>http://</code> prefix, and <code>null</code> for local file:// testing).</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--amber)"></span>Backend shows "Offline" in dashboard</div>
+    <p style="font-size:12px;color:var(--text2)">Check: (1) Backend is running on port 8000, (2) <code>config.js</code> has correct URL or empty for Vite proxy, (3) Browser console for CORS errors.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--amber)"></span><code>DATABASE_URL</code> connection refused</div>
+    <p style="font-size:12px;color:var(--text2)">Verify: (1) Supabase project is active (not paused), (2) Password is correct, (3) Your IP is in Supabase allowlist (Settings → Database → Network restrictions).</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--amber)"></span>Gemini API errors</div>
+    <p style="font-size:12px;color:var(--text2)">Check: (1) API key is valid, (2) Gemini API is enabled in GCP, (3) You haven't exceeded free tier limits. The backend has fallback responses if Gemini fails.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--amber)"></span>Email not sending</div>
+    <p style="font-size:12px;color:var(--text2)">Check: (1) Using Gmail App Password (not account password), (2) SMTP_PORT matches (587 for STARTTLS, 465 for SSL), (3) 2FA is enabled on Gmail account.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="dot" style="background:var(--green)"></span>Quick health check</div>
+    <pre># Backend running?
+curl http://localhost:8000/health
+
+# Database connected?
+curl http://localhost:8000/admin/health
+
+# Frontend reachable?
+open http://localhost:5173</pre>
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════ QUICK START ═══════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <div class="section-icon" style="background:var(--green-bg);color:var(--green)">&#9889;</div>
+    <div><h2>Quick Start (Copy-Paste)</h2><p>Get everything running in 5 commands</p></div>
+  </div>
+
+  <pre>
+# 1. Clone and setup backend
+cd VOLTRIX/backend
+python -m venv .venv && .venv\Scripts\activate   # Windows
+pip install -r requirements.txt
+cp .env.example .env   # ← Fill in your credentials
+
+# 2. Run schema in Supabase SQL Editor (paste schema.sql)
+
+# 3. Load data
+python ../load_to_bq.py
+
+# 4. Start backend
+uvicorn main:app --reload --port 8000
+
+# 5. Start frontend (new terminal)
+cd ../frontend
+npm install
+npm run dev
+# → Open http://localhost:5173</pre>
+
+  <div class="alert green" style="margin-top:16px"><strong>That's it!</strong> Use the dashboard Admin page to seed households, then advance the simulation to generate data.</div>
+</div>
+
+<div style="text-align:center;padding:40px 0;color:var(--text3);font-size:12px">
+  <p>VOLTRIX Deployment Guide &mdash; Generated for the VOLTRIX Smart Grid Dashboard</p>
+  <p style="margin-top:4px">Backend: Mrinmoy &middot; AI/ML: Debjyoti &middot; Frontend: Jeet &middot; Data: Shritama</p>
+</div>
+
+</div><!-- /container -->
+</body>
+</html>
