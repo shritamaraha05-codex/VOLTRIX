@@ -138,6 +138,10 @@ def save_forecasts(zone_id: str, forecast_rows: list[dict]) -> None:
     if not zone:
         return
     zone_uuid = zone["id"]
+    # Clear stale forecasts from earlier runs so old zero-valued rows don't
+    # persist and show as flatlines on the chart. Each simulate/advance call
+    # produces a fresh 24h forecast — no reason to keep the previous one.
+    execute("DELETE FROM forecasts WHERE zone_id = %s", (zone_uuid,))
     params = [
         (zone_uuid, row["forecast_for"], row["predicted_load_kw"])
         for row in forecast_rows
@@ -146,8 +150,6 @@ def save_forecasts(zone_id: str, forecast_rows: list[dict]) -> None:
         """
         INSERT INTO forecasts (zone_id, forecast_for, predicted_load_kw)
         VALUES (%s, %s, %s)
-        ON CONFLICT (zone_id, forecast_for) DO UPDATE
-          SET predicted_load_kw = EXCLUDED.predicted_load_kw
         """,
         params,
     )

@@ -13,11 +13,12 @@ Environment variables required (set in .env or Cloud Run config):
 """
 
 import os
+import json
 import logging
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -25,8 +26,13 @@ load_dotenv()
 import db
 import bq as bq_module
 import ingestion
-from forecasting import forecast_zone, detect_stress, backtest_zone
-from agent import run_stress_analysis, answer_question
+from forecasting import (
+    forecast_zone,
+    detect_stress,
+    detect_actual_stress,
+    backtest_zone,
+)
+from agent import run_stress_analysis, answer_question, answer_question_stream
 from email_service import send_nudge_email, send_utility_alert, SMTP_USER
 from models import (
     ZoneOut,
@@ -356,7 +362,18 @@ def advance_simulation():
                 continue
 
             # Step 1: Forecast
-            forecast_df = forecast_zone(bq_zone_id, periods=24, current_day=new_day)
+            # IMPORTANT: train through the day *before* new_day, not new_day
+            # itself. get_zone_load_window(day=N) returns data up to and
+            # including day N, so calling this with current_day=new_day would
+            # train on data that already contains new_day's own readings
+            # (including any injected stress event) and then forecast the day
+            # *after* that — meaning the system would never actually predict
+            # the day it's supposed to be evaluating. household_summaries
+            # below already correctly uses day=new_day, so the forecast needs
+            # to target the same day, trained on everything strictly before it.
+            forecast_df = forecast_zone(
+                bq_zone_id, periods=24, current_day=max(new_day - 1, 0)
+            )
 
             # Persist forecasts for the chart
             forecast_rows = [
@@ -367,6 +384,19 @@ def advance_simulation():
 
             # Step 2: Stress detection
             stress = detect_stress(bq_zone_id, forecast_df, capacity)
+
+            if not stress:
+                # Forecast-based detection only has a chance against stress
+                # that's building up gradually (there's a precedent in the
+                # preceding hours to extrapolate from). A genuinely novel,
+                # first-time spike with zero lead-up can't be predicted a day
+                # ahead by any load-history model. Fall back to checking
+                # today's own actual readings directly.
+                try:
+                    day_readings = bq_module.get_zone_load_for_day(bq_zone_id, new_day)
+                    stress = detect_actual_stress(bq_zone_id, day_readings, capacity)
+                except Exception as e:
+                    logger.error(f"    Nowcast check failed for {zone_name}: {e}")
 
             if not stress:
                 results.append(
@@ -444,10 +474,10 @@ def advance_simulation():
 # ─── Chat ──────────────────────────────────────────────────────────────────────
 
 
-@app.post("/chat", response_model=ChatResponse)
-def chat(body: ChatRequest):
+@app.post("/chat")
+async def chat(body: ChatRequest):
     """
-    Conversational Q&A using the ADK agent.
+    Conversational Q&A via SSE streaming from Gemma.
     Builds context from stress events, recommendations, and simulation state.
     """
     try:
@@ -515,12 +545,37 @@ def chat(body: ChatRequest):
                 )
 
         context = "\n".join(context_parts)
-        answer = answer_question(body.question, context)
-        return ChatResponse(answer=answer)
+
+        async def event_stream():
+            try:
+                async for token in answer_question_stream(body.question, context):
+                    yield f"data: {json.dumps({'token': token})}\n\n"
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                logger.error("chat stream error: %s", e, exc_info=True)
+                yield f"data: {json.dumps({'token': 'Sorry, I had trouble answering that.'})}\n\n"
+                yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     except Exception as e:
         logger.error(f"/chat error: {e}", exc_info=True)
-        return ChatResponse(answer="Sorry, I couldn't process that right now.")
+        return StreamingResponse(
+            iter(
+                [
+                    f"data: {json.dumps({'token': 'Sorry, I could not process that right now.'})}\n\n",
+                    "data: [DONE]\n\n",
+                ]
+            ),
+            media_type="text/event-stream",
+        )
 
 
 # ─── Data ingestion (CSV upload) ───────────────────────────────────────────────

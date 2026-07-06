@@ -1,17 +1,14 @@
 <div align="center">
 
-# ⚡ Voltrix
+# ⚡ VOLTRIX
 
-### AI-Powered Energy Load Forecasting & Citizen Nudge Platform
+### AI-Powered Smart Grid — Load Forecasting, Stress Detection & Citizen Nudging
 
-
-
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react)](https://react.dev)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
 [![BigQuery](https://img.shields.io/badge/BigQuery-Free_Tier-4285F4?style=flat-square&logo=google-cloud)](https://cloud.google.com/bigquery)
-[![Gemini](https://img.shields.io/badge/Gemini-AI_Studio-8E75B2?style=flat-square&logo=google)](https://aistudio.google.com)
-[![Prophet](https://img.shields.io/badge/Prophet-Facebook-1877F2?style=flat-square&logo=meta)](https://facebook.github.io/prophet/)
-[![Supabase](https://img.shields.io/badge/Supabase-Postgres-3ECF8E?style=flat-square&logo=supabase)](https://supabase.com)
+[![Gemma](https://img.shields.io/badge/Gemma-4_AI_Studio-8E75B2?style=flat-square&logo=google)](https://aistudio.google.com)
+[![Supabase](https://img.shields.io/badge/Supabase-Free-3ECF8E?style=flat-square&logo=supabase)](https://supabase.com)
+[![Chart.js](https://img.shields.io/badge/Chart.js-4.4-FF6384?style=flat-square&logo=chart.js)](https://www.chartjs.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
 </div>
@@ -20,29 +17,14 @@
 
 ## The Problem
 
-Modern city grids generate enormous amounts of energy usage data — but utilities and citizens only find out about grid stress **after it happens**. By the time a brownout occurs, it's too late to act.
+City grids generate enormous volumes of energy data — but utilities and citizens only discover grid stress **after it happens**. By the time a brownout occurs, it's too late to act.
 
-VOLTRIX flips that. It watches household and zone-level energy consumption, forecasts demand up to 24 hours ahead using **Prophet** (with hour-of-day cyclical regressors), detects predicted stress events before they occur, and automatically generates two things:
+VOLTRIX flips that. It watches zone-level energy consumption, forecasts demand 24 hours ahead using **seasonal-trend anomaly detection** (zero compiled dependencies — no Prophet, no CmdStan), detects predicted stress events before they occur, and automatically generates:
 
-- A plain-language explanation of *why* the grid will be stressed (powered by a Google ADK agent using Gemini 2.0 Flash)
+- A plain-language explanation of *why* the grid will be stressed (powered by a Google ADK agent using Gemma 4 31B)
 - Personalized nudges to citizens + actionable briefs for utility operators — delivered automatically via SMTP email
 
 **No manual analysis. No after-the-fact alerts. Full decision loop, closed.**
-
----
-
-## Demo
-
-> 🎬 *Coming soon — Demo Day recording*
-
-**What you'll see in the demo:**
-
-1. Dashboard loads with all zones in a normal state
-2. "Advance Simulation" button fast-forwards to a heatwave event (Day 25)
-3. Zone 3 flips to critical — forecast line crosses the capacity threshold in real time
-4. ADK agent reasoning auto-populates: *"Zone 3 is expected to exceed safe load between 6 PM–8 PM due to high residential demand from WFH households combined with elevated ambient temperature..."*
-5. Household nudges and a utility action brief appear instantly
-6. One real email lands in the demo inbox via SMTP
 
 ---
 
@@ -50,66 +32,71 @@ VOLTRIX flips that. It watches household and zone-level energy consumption, fore
 
 ```
 Synthetic Smart Meter Data
-        +
-Weather / Occupancy / Tariff Data
-               │
-               ▼
-           BigQuery
-        (time-series warehouse)
-               │
-               ▼
-       Prophet Forecasting
-  (in-process, 24-hour ahead,
-   hour-sin/cos regressors)
-               │
-               ▼
-       Stress Detection
-   (85% capacity threshold)
-               │
-               ▼
-    Google ADK Agent (Gemini 2.0 Flash)
-  (3 tools: zone details, cause analysis,
-   household nudge generation)
-               │
-        ┌──────┴──────┐
-        ▼             ▼
-  Citizen Nudges  Utility Alerts
-  (SMTP email)    (SMTP email)
-        │             │
-        └──────┬──────┘
-               ▼
-      React Dashboard (Vercel)
-      Cloud Run API (FastAPI)
+           │
+           ▼
+       BigQuery Free Tier
+    (load_readings: 43,200 hourly rows)
+           │
+           ▼
+  Seasonal-Trend Forecasting (v3)
+  ┌─────────────────────────────────┐
+  │ 1. Build hourly profile (mean   │
+  │    + std per hour-of-day ×      │
+  │    weekday/weekend) from full   │
+  │    history                      │
+  │ 2. Compute recent anomaly       │
+  │    multiplier (how much the     │
+  │    last 24h differs from        │
+  │    seasonal expectation)        │
+  │ 3. Forecast: profile[hour] ×    │
+  │    anomaly, decaying toward 1.0 │
+  └─────────────────────────────────┘
+           │
+           ▼
+     Stress Detection
+   (≥85% of capacity threshold)
+           │
+           ▼
+  Google ADK Agent (Gemma 4 31B)
+  ┌─────────────────────────────────┐
+  │ 1. get_zone_details — severity  │
+  │ 2. analyse_stress_cause — why   │
+  │ 3. generate_household_nudges    │
+  │    — per-home actions           │
+  └─────────────────────────────────┘
+           │
+     ┌─────┴─────┐
+     ▼           ▼
+Citizen      Utility
+Nudges       Alerts
+(SMTP)       (SMTP)
+     │           │
+     └─────┬─────┘
+           ▼
+   HTML Dashboard (Vercel)
+   FastAPI Backend (Cloud Run)
 ```
 
-Every stress event stores a full **reasoning chain** — forecast numbers → threshold breach → Gemini explanation → recommendation — so nothing is a black box.
+Every stress event stores a full **reasoning chain** — forecast numbers → threshold breach → ADK agent explanation → recommendations — so nothing is a black box.
 
 ---
 
-## Tech Stack
+## Tech Stack (100% Free)
 
-### Core (100% Free — no trial credits)
-
-| Layer | Technology | Why |
+| Layer | Technology | Cost |
 |---|---|---|
-| **Forecasting** | [Prophet](https://facebook.github.io/prophet/) (in-process) | Robust time-series with hourly cyclical regressors, no GPU needed |
-| **LLM / Reasoning** | Google ADK Agent (Gemini 2.0 Flash via [AI Studio](https://aistudio.google.com)) | Tool-calling agent with 3 tools, same model as Vertex AI, free tier |
-| **Data Warehouse** | BigQuery Free Tier | 10GB storage, 1TB queries/month — more than enough |
-| **Operational DB** | Supabase (Postgres) | Free tier, managed, instant setup |
-| **Backend** | FastAPI on Cloud Run | Free tier (2M req/month), scales to zero |
-| **Frontend** | React on Vercel | Free tier, instant deploys |
-| **Email Delivery** | SMTP via stdlib `smtplib` | Works with any SMTP provider (Gmail App Password), no external dependency |
+| **Forecasting** | Seasonal-trend v3 (custom) — no Prophet, zero compiled deps | Free |
+| **LLM / Agent** | Google ADK + Gemma 4 31B via [AI Studio](https://aistudio.google.com) | Free (15 req/min) |
+| **Data Warehouse** | [BigQuery Free Tier](https://cloud.google.com/bigquery/pricing) — 10 GB storage, 1 TB queries/month | Free |
+| **Operational DB** | [Supabase](https://supabase.com) Postgres — 500 MB, 5 GB bandwidth | Free |
+| **Backend** | FastAPI on [Cloud Run](https://cloud.google.com/run) — 2M requests/month | Free |
+| **Frontend** | Static HTML + Chart.js on [Vercel](https://vercel.com) — 100 GB bandwidth | Free |
+| **Email** | stdlib `smtplib` (Gmail App Password or any SMTP) | Free |
+| **Synthetic Data** | Custom generator — 5 zones × 12 households × 30 days | Free |
 
-### Production Path (mentioned in pitch, not required live)
+### Design Principle
 
-| Swap | From | To |
-|---|---|---|
-| Forecasting | Prophet (in-process) | TimeFM / Vertex AI Prediction |
-| LLM / Agent | ADK Agent (AI Studio) | Vertex AI Gemini Agent |
-| Email | SMTP stdlib | SendGrid / SES |
-| Analytics | Looker Studio free | Looker Enterprise |
-
-The architecture is **modular by design** — each layer is independently replaceable without touching the rest.
+Every layer is independently replaceable — swap in TimeFM forecasting, Vertex AI agent, SendGrid email, or Looker analytics without touching the rest.
 
 ---
 
@@ -117,36 +104,35 @@ The architecture is **modular by design** — each layer is independently replac
 
 ```
 voltrix/
-├── backend/                  # FastAPI — Cloud Run
-│   ├── main.py               # All API endpoints + /simulate/advance orchestration
-│   ├── agent.py              # Google ADK agent (3 tools, stress analysis + Q&A)
-│   ├── forecasting.py        # Prophet forecasting + stress detection
-│   ├── email_service.py      # SMTP email delivery (stdlib smtplib)
-│   ├── db.py                 # Postgres connection pool + domain helpers
-│   ├── bq.py                 # BigQuery read wrapper (load history, household data)
-│   ├── models.py             # Pydantic request/response schemas
-│   ├── schema.sql            # Postgres schema (apply once)
-│   ├── Dockerfile
-│   ├── deploy.sh             # One-command Cloud Run deploy
-│   ├── requirements.txt
-│   └── run.sh                # Local dev launcher
+├── backend/                       # FastAPI — Cloud Run
+│   ├── main.py                    # All endpoints + /simulate/advance pipeline
+│   ├── agent.py                   # ADK agent (3 tools) + SSE streaming chat
+│   ├── forecasting.py             # Seasonal-trend v3 — stress detection + backtest
+│   ├── bq.py                      # BigQuery client (read/write)
+│   ├── db.py                      # Postgres pool + domain helpers
+│   ├── ingestion.py               # CSV upload validation + cleaning
+│   ├── email_service.py           # SMTP delivery (stdlib only)
+│   ├── models.py                  # Pydantic request/response schemas
+│   ├── schema.sql                 # Postgres DDL (run once)
+│   ├── Dockerfile                 # Cloud Run container
+│   ├── deploy.sh                  # One-command Cloud Run deploy
+│   ├── run.sh                     # Local dev launcher
+│   ├── requirements.txt           # Python dependencies
+│   ├── .env.example               # Template for env vars
+│   └── .env.production            # Production env var template
 │
-├── data/                     # Synthetic data generator
-│   └── generate.py           # 5 zones × 15 households × 30 days + stress events
+├── frontend/                      # Static SPA — Vercel
+│   ├── index.html                 # Complete dashboard (7 pages, SSE chat, dark mode)
+│   ├── config.js                  # Backend URL (edit before deploy)
+│   ├── vercel.json                # Vercel static config
+│   └── deploy.sh                  # Backend deploy script reference
 │
-├── load_to_bq.py             # Shritama's BigQuery data loader
-│
-├── frontend/                 # React — Vercel
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── ZoneCard.jsx          # Live load chart per zone
-│   │   │   ├── StressEventFeed.jsx   # Detected events + ADK reasoning
-│   │   │   ├── RecommendationFeed.jsx
-│   │   │   ├── ExplainabilityPanel.jsx  # Drill-down: why this recommendation?
-│   │   │   └── SimulationControl.jsx    # The demo button
-│   │   └── App.jsx
-│   └── package.json
-│
+├── generate.py                    # Synthetic data generator (5 archetypes, stress events)
+├── load_to_bq.py                  # BigQuery CSV loader
+├── api_test.html                  # Standalone API test page
+├── readings.csv                   # 43,200 hourly readings (generated)
+├── zones.csv                      # 5 zone metadata rows
+├── households.csv                 # 60 household roster rows
 └── README.md
 ```
 
@@ -154,38 +140,134 @@ voltrix/
 
 ## API Reference
 
-Base URL: `https://your-cloud-run-url.run.app`
+Base URL: `http://localhost:8000` (local) or `https://your-service.run.app` (prod)
+
+### Core
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/health` | Liveness check |
+| `GET` | `/health` | Liveness check — returns `{"status":"ok","day":N}` |
 | `GET` | `/zones` | All zones with capacity metadata |
-| `GET` | `/zones/{zone_id}/load-history` | Actual + predicted load for chart |
-| `GET` | `/stress-events` | Recent stress events with Gemini reasoning |
+| `GET` | `/zones/{bq_zone_id}/load-history?days=3` | Actual + predicted load for chart (ForecastPoint[]) |
+| `GET` | `/zones/{bq_zone_id}/backtest?test_days=3` | Rolling-origin backtest — MAPE / RMSE per day |
+
+### Stress Events
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/stress-events?limit=20` | Recent stress events with zone name + reasoning |
 | `GET` | `/stress-events/{id}` | Single event detail |
 | `GET` | `/stress-events/{id}/recommendations` | Nudges + utility brief for one event |
-| `GET` | `/recommendations` | All recommendations with sent status |
-| `POST` | `/recommendations/{recommendation_id}/send` | Send recommendation via SMTP email |
-| `GET` | `/simulation/state` | Current simulated day |
-| **`POST`** | **`/simulate/advance`** | **Advance simulation + run full AI pipeline** |
-| `POST` | `/chat` | Conversational Q&A with ADK agent |
-| `POST` | `/admin/seed-households` | One-time BQ → Postgres household sync |
-| `POST` | `/admin/reset-simulation` | Reset to Day 1 (use before demo) |
 
-### `/simulate/advance` — what it does
+### Recommendations
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/recommendations?limit=50&unsent_only=false` | All recommendations |
+| `POST` | `/recommendations/{id}/send` | Send via SMTP email — never raises |
+
+### Simulation
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/simulation/state` | Current simulated day |
+| **`POST`** | **`/simulate/advance`** | **+1 day — runs full AI pipeline** |
+
+### Chat
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/chat` | Conversational Q&A — **SSE streaming** (`data: {"token":"..."}\n\n`) |
+
+### CSV Ingestion
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/ingest/readings` | Upload readings CSV → BigQuery |
+| `POST` | `/ingest/zones` | Upload zones CSV → Postgres upsert |
+| `POST` | `/ingest/households` | Upload households CSV → Postgres upsert |
+| `GET` | `/ingest/template/{kind}` | Download example CSV (`readings`, `zones`, or `households`) |
+
+### Admin
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/admin/health` | Detailed diagnostics (DB, env vars, CORS config) |
+| `POST` | `/admin/seed-households` | One-time: sync BigQuery households → Postgres |
+| `POST` | `/admin/reset-simulation` | Reset to Day 1 + clear all events/forecasts |
+
+### `/simulate/advance` — the money endpoint
 
 ```
-1. Increment simulation day (capped at 30)
-2. For each zone (skip if active stress event already exists):
-   a. Pull load window from BigQuery up to current day
-   b. Fit Prophet on window, forecast next 24 hours
-   c. Detect stress (predicted load > 85% of capacity)
-   d. If stress → call ADK agent (3 tools) for reasoning + household nudges
-   e. Persist stress event + recommendations to Postgres
+1. Increment current_day in simulation_state
+2. For each zone:
+   a. Skip if zone already has an active (future) stress event
+   b. Pull load window from BigQuery up to current_day
+   c. Seasonal-trend forecast for next 24 hours
+   d. Detect stress (predicted load > 85% of capacity)
+   e. If stress → call ADK agent (3 tools) for reasoning + nudges
+   f. Persist stress event + recommendations to Postgres
+   g. If no forecast stress → fallback: check today's actual readings
 3. Return per-zone results → dashboard re-renders live
 ```
 
 Full Swagger docs at `/docs` once the API is running.
+
+---
+
+## Forecasting — Seasonal-Trend v3 (no Prophet)
+
+Forecasting runs **in-process** inside FastAPI — zero compiled dependencies, guaranteed to build on any Python 3.11+ environment.
+
+### Why v3 dropped Prophet
+
+Prophet needs a compiled CmdStan backend. In practice, `pip install prophet` frequently fails in CI/container builds (network blocks, missing compilers). The old v2 code was silently falling back to a "same hour yesterday" average — which works on quiet days but **misses active demand spikes entirely** (a heatwave, a storm).
+
+### How v3 works
+
+1. **Build a seasonal profile** from the entire history — mean + std load per (hour-of-day × weekday/weekend). This is a de-noised version of what the old fallback approximated from 1-2 sample points.
+
+2. **Compute a recent anomaly multiplier** — how much the last 24 hours actually ran vs. the seasonal expectation. This detects "we're in a heatwave right now" — the old fallback had no equivalent.
+
+3. **Forecast each future hour** as `seasonal_profile[hour] × anomaly_multiplier`, **decaying** the multiplier back toward 1.0 across the horizon (a spike happening now is a stronger signal for the next few hours than 24h out).
+
+4. **Uncertainty bands** from each hour's historical spread, widened by recent anomaly volatility.
+
+Backtested against the synthetic dataset: **~6.1% MAPE** across zones, correctly flags the injected Zone 2 heatwave.
+
+---
+
+## The AI Decision Loop
+
+### Reasoning — Google ADK Agent (Gemma 4 31B)
+
+When stress is detected, the backend calls a **Google ADK agent** with three tools:
+
+1. **`get_zone_details`** — fetches capacity, peak prediction, overage summary
+2. **`analyse_stress_cause`** — determines root causes from timing + archetype mix
+3. **`generate_household_nudges`** — personalised actions per archetype
+
+The agent returns structured JSON:
+- `reasoning` — plain-language explanation
+- `utility_action` — what the operator should do
+- `household_nudges` — one action per household
+
+A **deterministic fallback** (same format) activates if the agent fails to produce valid JSON — the demo never shows zero nudges for a real stress event.
+
+### Chat (SSE Streaming)
+
+The `/chat` endpoint streams tokens from Gemma 4 31B directly via `generate_content_stream()`, bridged into FastAPI's async event loop via `asyncio.Queue` + background thread. The frontend consumes SSE with `ReadableStream.getReader()`.
+
+### Explainability
+
+Each recommendation is traceable:
+```
+Forecast: 48.3 kW predicted at 7pm
+Capacity: 36.0 kW (threshold: 30.6 kW = 85%)
+Breach: 17.7 kW over threshold (58% excess)
+ADK agent reasoning: "Evening residential peak + WFH households..."
+Generated nudge: "Delay dishwasher to after 10pm"
+```
 
 ---
 
@@ -194,11 +276,10 @@ Full Swagger docs at `/docs` once the API is running.
 ### Prerequisites
 
 - Python 3.11+
-- Node.js 18+
-- A [Supabase](https://supabase.com) project (free)
-- A [Google Cloud](https://console.cloud.google.com) project with BigQuery API enabled (free tier)
-- A [Google AI Studio](https://aistudio.google.com/app/apikey) API key (free)
-- A Gmail App Password (or any SMTP credentials) for email delivery
+- [Supabase](https://supabase.com) project (free)
+- [Google Cloud](https://console.cloud.google.com) project with BigQuery API enabled
+- [Google AI Studio](https://aistudio.google.com/app/apikey) API key (free)
+- Gmail App Password (or any SMTP credentials)
 
 ### 1. Clone
 
@@ -207,45 +288,45 @@ git clone https://github.com/YOUR_ORG/voltrix.git
 cd voltrix
 ```
 
-### 2. Backend
+### 2. Configure environment
 
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
 cp .env.example .env
-# → Fill in DATABASE_URL, GCP_PROJECT, GEMINI_API_KEY, SMTP_* vars
+# Fill in: DATABASE_URL, GCP_PROJECT, GEMINI_API_KEY, SMTP_*
 ```
 
-### 3. Apply Postgres schema
+### 3. Python setup
 
 ```bash
-psql $DATABASE_URL -f schema.sql
+python -m venv .venv
+.venv\Scripts\activate     # Windows
+source .venv/bin/activate  # macOS/Linux
+pip install -r requirements.txt
 ```
 
-### 4. Generate + load synthetic data
+### 4. Apply Postgres schema
 
 ```bash
-cd ../data
-python generate.py          # creates readings.csv + zones.csv
-
-# Load into BigQuery
-python load_to_bq.py        # uses GOOGLE_APPLICATION_CREDENTIALS from .env
+# Connect to your Supabase project via psql or the SQL Editor UI
+# Run schema.sql contents — creates all tables + seeds zones
+psql $DATABASE_URL -f backend/schema.sql
 ```
 
-### 5. Seed households into Postgres
+### 5. Generate synthetic data
 
 ```bash
-# With the API running:
-curl -X POST http://localhost:8000/admin/seed-households
+# Creates readings.csv, zones.csv, households.csv
+python generate.py
 ```
 
-### 6. Run forecasting (Google Colab)
+### 6. Load data into BigQuery
 
-Open `forecasting/timefm_forecast.ipynb` in [Google Colab](https://colab.research.google.com), set your BigQuery project ID in the first cell, and run all cells. Forecast results write back to BigQuery automatically.
+```bash
+python load_to_bq.py
+```
 
-### 7. Start the API
+### 7. Start the backend
 
 ```bash
 cd backend
@@ -253,100 +334,121 @@ uvicorn main:app --reload --port 8000
 # Swagger UI: http://localhost:8000/docs
 ```
 
-### 8. Start the frontend
+### 8. Seed households
+
+```bash
+curl -X POST http://localhost:8000/admin/seed-households
+curl -X POST http://localhost:8000/admin/reset-simulation
+```
+
+### 9. Serve the frontend
 
 ```bash
 cd frontend
-npm install
-npm run dev
-# App: http://localhost:5173
+# Edit config.js: set window.__BACKEND_URL = "http://localhost:8000"
+python -m http.server 8080
+# Open http://localhost:8080
 ```
 
-### 9. Test the loop
+### 10. Test the loop
 
 ```bash
 curl -X POST http://localhost:8000/simulate/advance
 ```
 
-Watch the dashboard update — if Zone 3 shows a stress event with Gemini reasoning, everything is wired correctly.
+Watch the dashboard update — if a zone shows a stress event with ADK reasoning, everything is wired correctly.
 
 ---
 
 ## Environment Variables
 
-| Variable | Where to get it | Required |
+| Variable | Source | Required |
 |---|---|---|
 | `DATABASE_URL` | Supabase → Settings → Database | ✅ |
 | `GCP_PROJECT` | Google Cloud Console | ✅ |
-| `GOOGLE_APPLICATION_CREDENTIALS` | GCP → IAM → Service Accounts → JSON key | ✅ (local dev) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | GCP → IAM → Service Account JSON key | Local dev only |
 | `GEMINI_API_KEY` | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) | ✅ |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` | Gmail App Password (or any SMTP) | ✅ |
-| `SMTP_FROM` | Display name + email for sender | ✅ |
+| `SMTP_FROM` | Sender name + email | ✅ |
 | `VOLTRIX_OPS_EMAIL` | Recipient for utility alerts | ✅ |
-| `ALLOWED_ORIGINS` | Your frontend URL(s), comma-separated | ✅ |
+| `ALLOWED_ORIGINS` | Comma-separated frontend URLs | ✅ |
 
 ---
 
-## Deploy to Cloud Run
+## Deploy
+
+### Backend → Cloud Run
 
 ```bash
 cd backend
-
-# Set env vars in shell
 export DATABASE_URL="postgresql://..."
 export GEMINI_API_KEY="AIza..."
-export ALLOWED_ORIGINS="https://your-app.vercel.app"
-
+export ALLOWED_ORIGINS="https://voltrix.vercel.app"
 chmod +x deploy.sh && ./deploy.sh
 ```
 
-The script builds the Docker image via Cloud Build, pushes it to Container Registry, and deploys to Cloud Run — all in one command. Service URL is printed at the end.
+Requires: `gcloud auth login`, `gcloud config set project YOUR_PROJECT_ID`.
+
+### Frontend → Vercel
+
+```bash
+cd frontend
+# 1. Edit config.js — set window.__BACKEND_URL to your Cloud Run URL
+# 2. Deploy:
+npx vercel --prod
+```
+
+Or connect the GitHub repo to Vercel (root directory: `frontend`).
 
 ---
 
-## The AI Decision Loop (in depth)
+## Frontend Dashboard
 
-### Forecasting — Prophet
+Single HTML file (`frontend/index.html`), no build step. Features:
 
-[Prophet](https://facebook.github.io/prophet/) is a robust, open-source time-series forecasting library developed by Meta. It handles daily and weekly seasonality natively and is well-suited for energy load patterns with clear hourly and weekly cycles.
+- **7 pages**: Dashboard, Zones, Events, Recommendations, Simulation, Chat, Admin
+- **Dark mode** — toggle persisted in localStorage
+- **SSE streaming chat** — real-time token-by-token responses from Gemma 4 31B
+- **Interactive charts** — Chart.js with gradient fills, tooltip drill-down
+- **Zone detail** — load-history + backtest results + chart type toggle (line/bar/area)
+- **Simulation progress bar** — visual day counter with animated fill
+- **CSV file ingestion** — upload households, readings, or zones directly
+- **Responsive** — mobile sidebar, resized KPIs, full-width content on small screens
+- **SHADCN-inspired design** — Inter font, slate palette, glassmorphism topbar, gradient cards
 
-In VOLTRIX, Prophet runs **in-process** inside the FastAPI backend — no separate Colab notebook or GPU needed. The model is trained on zone-level hourly load data from BigQuery and produces 24-hour ahead predictions using:
-- **Daily seasonality** — captures the evening peak pattern
-- **Weekly seasonality** — captures weekday vs weekend differences
-- **Hour-sin / hour-cos regressors** — provides the model with explicit hour-of-day cyclical features
+---
 
-For the live demo, this means the `/simulate/advance` button is always responsive — every click trains a fresh Prophet model on the current data window and generates forecasts in under a second.
+## Synthetic Data
 
-### Reasoning — Google ADK Agent (Gemini 2.0 Flash)
+`generate.py` produces 30 days of smart meter data for 5 zones × 12 households × 5 archetypes:
 
-When stress is detected, the backend calls a **Google ADK agent** — a tool-calling AI agent powered by Gemini 2.0 Flash. Unlike a single prompt call, the agent can autonomously decide which tools to use and in what order:
+| Archetype | Pattern |
+|---|---|
+| `family` | Morning 2.2 kW, evening 5.5 kW, high weekend baseline |
+| `single_professional` | Low daytime, evening 2.4 kW, higher weekend |
+| `wfh` | High daytime baseline 1.6 kW, evening 3.2 kW |
+| `retired` | Steady 1.1 kW daytime, moderate evening |
+| `small_business` | High morning 3.5 kW, low evening |
 
-1. **`get_zone_details`** — fetches zone capacity, peak prediction, and overage summary
-2. **`analyse_stress_cause`** — determines root causes based on timing and household archetypes
-3. **`generate_household_nudges`** — produces personalised nudges per household archetype
+**Stress events** use gradual sine-envelope ramps (not instant steps) so the seasonal-trend model can extrapolate from preceding hours:
 
-The agent synthesises the tool outputs into structured JSON:
-- `reasoning` — why this is happening in plain English
-- `utility_action` — what the grid operator should do
-- `household_nudges` — one personalized, specific action per household
+- **Zone 2 (East Heights)** — Days 24-27, multi-day heatwave
+- **Zone 0 (Riverside)** — Day 18, 6pm-9pm moderate surge
+- **Zone 3 (Northside)** — Days 28-29, storm surge
 
-The ADK agent also powers the `/chat` endpoint for conversational Q&A about zones, stress events, and recommendations.
+---
 
-Every output is stored with the full input context, making the system fully auditable. Judges (or users) can inspect exactly what data produced each recommendation.
+## Dashboard Pages
 
-### Explainability
-
-Each recommendation in the dashboard links to an **Explainability Panel** showing:
-
-```
-Forecast: 48.3 kW predicted at 7pm
-Capacity: 36.0 kW (threshold: 30.6 kW)
-Breach: 12.3 kW over capacity (34% excess)
-ADK agent reasoning: "..."
-Generated nudge: "..."
-```
-
-This is what separates VOLTRIX from a dashboard with charts — every decision has a traceable, inspectable chain.
+| Page | What it shows |
+|---|---|
+| **Dashboard** | KPI cards (zones, events, day, households) + zone grid + cumulative stress status |
+| **Zones** | Per-zone detail: load/temp history, forecast chart (line/bar/area), backtest MAPE |
+| **Events** | All stress events with severity filter + per-event recommendations |
+| **Recommendations** | All recommendations with send status + one-click SMTP delivery |
+| **Simulation** | Progress bar, advance button, per-zone results table |
+| **Chat** | SSE streaming chat with optional household context filter |
+| **Admin** | Seed/reset actions, CSV file uploads, health diagnostics |
 
 ---
 
@@ -354,10 +456,10 @@ This is what separates VOLTRIX from a dashboard with charts — every decision h
 
 | Person | Role |
 |---|---|
-| **Mrinmoy Chakraborty** | Backend lead — FastAPI, BigQuery, Cloud Run, pipeline orchestration |
-| **Debjyoti** | AI/ML lead — Prophet forecasting, ADK agent prompts, stress detection |
-| **Jeet** | Frontend — React dashboard, Recharts visualizations, simulation UI |
-| **Shritama** | Data & delivery — synthetic data generation, BigQuery data loader, demo script |
+| **Mrinmoy Chakraborty** | Backend — FastAPI, BigQuery, Cloud Run, pipeline orchestration, ingestion |
+| **Debjyoti** | AI/ML — Forecasting v3, seasonal-trend model, backtesting, stress detection |
+| **Jeet** | Frontend — HTML/CSS/JS dashboard, Chart.js visualizations, Vercel deployment |
+| **Shritama** | Data — synthetic data generation, BigQuery schema + loading, demo script |
 
 ---
 
@@ -368,5 +470,7 @@ MIT — see [LICENSE](LICENSE)
 ---
 
 <div align="center">
-Built with ⚡ 
+
+Built with ⚡ by Team VOLTRIX
+
 </div>

@@ -32,16 +32,7 @@ def get_client() -> bigquery.Client:
     return _client
 
 
-# ─── Core queries ─────────────────────────────────────────────────────────────
-
-
 def get_zone_hourly_load(zone_id: str, days_back: int = 30) -> list[dict]:
-    """
-    Returns hourly aggregate load for a zone over the last N days.
-    Used by Debjyoti's forecast_zone() as the training series.
-
-    Returns: [{"timestamp": datetime, "load_kw": float}, ...]
-    """
     client = get_client()
     query = f"""
         SELECT
@@ -64,72 +55,17 @@ def get_zone_hourly_load(zone_id: str, days_back: int = 30) -> list[dict]:
 
 
 def get_zone_load_for_chart(zone_id: str, days_back: int = 3) -> list[dict]:
-    """
-    Returns hourly load for the React dashboard chart (last N days of the dataset).
-    Uses the dataset's own date range (via MIN/MAX timestamps) instead of
-    CURRENT_TIMESTAMP, so it works correctly with historical data that doesn't
-    span up to the present day.
-
-    Shaped for Recharts: [{"hour": "06-26 18:00", "actual": 28.3}, ...]
-    """
-    client = get_client()
-    # Find the boundaries for this zone
-    bounds_query = f"""
-        SELECT MIN(timestamp) AS min_ts, MAX(timestamp) AS max_ts
-        FROM `{TABLE}`
-        WHERE zone_id = @zone_id
-    """
-    bounds = client.query(
-        bounds_query,
-        job_config=bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("zone_id", "STRING", zone_id)
-            ]
-        ),
-    ).result()
-    row = list(bounds)[0]
-    if row.min_ts is None:
-        return []
-    min_ts = row.min_ts
-    max_ts = row.max_ts
-    total_hours = int((max_ts - min_ts).total_seconds() / 3600) + 1
-    cutoff_hours = max(0, total_hours - days_back * 24)
-
-    query = f"""
-        SELECT
-            TIMESTAMP_TRUNC(timestamp, HOUR) AS timestamp,
-            SUM(load_kw)                     AS load_kw
-        FROM `{TABLE}`
-        WHERE zone_id = @zone_id
-          AND TIMESTAMP_DIFF(timestamp, @min_ts, HOUR) >= @cutoff_hours
-        GROUP BY 1
-        ORDER BY 1
-    """
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("zone_id", "STRING", zone_id),
-            bigquery.ScalarQueryParameter("min_ts", "TIMESTAMP", min_ts),
-            bigquery.ScalarQueryParameter("cutoff_hours", "INT64", cutoff_hours),
-        ]
-    )
-    rows = client.query(query, job_config=job_config).result()
+    raw = get_zone_hourly_load(zone_id, days_back=days_back)
     return [
         {
-            "hour": r.timestamp.strftime("%m-%d %H:%M"),
-            "actual": round(float(r.load_kw), 2),
+            "hour": r["timestamp"].strftime("%m-%d %H:%M"),
+            "actual": round(r["load_kw"], 2),
         }
-        for r in rows
+        for r in raw
     ]
 
 
 def get_zone_load_window(zone_id: str, day: int, total_days: int = 30) -> list[dict]:
-    """
-    Returns the load readings for a specific simulated day (1-indexed).
-    Used by /simulate/advance to expose only the data up to the current day.
-
-    day=1  → first 24 hours of the dataset
-    day=25 → up to and including day 25 (the injected stress event day)
-    """
     client = get_client()
     query = f"""
         SELECT
@@ -153,17 +89,35 @@ def get_zone_load_window(zone_id: str, day: int, total_days: int = 30) -> list[d
     return [{"timestamp": row.timestamp, "load_kw": float(row.load_kw)} for row in rows]
 
 
-def get_household_load_for_zone(zone_id: str, day: int, limit: int = 10) -> list[dict]:
-    """
-    Returns per-household load aggregates for a given simulated day.
-    Used to build the household_summaries list passed to Gemini.
-
-    Returns: [{"household_id": str, "archetype": str, "avg_load_kw": float}, ...]
-    sorted descending by avg_load_kw (highest contributors first).
-    """
+def get_zone_load_for_day(zone_id: str, day: int) -> list[dict]:
     client = get_client()
     lower_hour = (day - 1) * 24
     upper_hour = day * 24 - 1
+    query = f"""
+        SELECT
+            TIMESTAMP_TRUNC(timestamp, HOUR) AS timestamp,
+            SUM(load_kw)                     AS load_kw
+        FROM `{TABLE}`
+        WHERE zone_id = @zone_id
+          AND TIMESTAMP_DIFF(timestamp, (
+                SELECT MIN(timestamp) FROM `{TABLE}` WHERE zone_id = @zone_id
+              ), HOUR) BETWEEN @lower_hour AND @upper_hour
+        GROUP BY 1
+        ORDER BY 1
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("zone_id", "STRING", zone_id),
+            bigquery.ScalarQueryParameter("lower_hour", "INT64", lower_hour),
+            bigquery.ScalarQueryParameter("upper_hour", "INT64", upper_hour),
+        ]
+    )
+    rows = client.query(query, job_config=job_config).result()
+    return [{"timestamp": row.timestamp, "load_kw": float(row.load_kw)} for row in rows]
+
+
+def get_household_load_for_zone(zone_id: str, day: int, limit: int = 10) -> list[dict]:
+    client = get_client()
     query = f"""
         SELECT
             household_id,
@@ -173,7 +127,7 @@ def get_household_load_for_zone(zone_id: str, day: int, limit: int = 10) -> list
         WHERE zone_id = @zone_id
           AND TIMESTAMP_DIFF(timestamp, (
                 SELECT MIN(timestamp) FROM `{TABLE}` WHERE zone_id = @zone_id
-              ), HOUR) BETWEEN @lower_hour AND @upper_hour
+              ), HOUR) BETWEEN {(day - 1) * 24} AND {day * 24 - 1}
         GROUP BY household_id, archetype
         ORDER BY avg_load_kw DESC
         LIMIT @lim
@@ -181,8 +135,6 @@ def get_household_load_for_zone(zone_id: str, day: int, limit: int = 10) -> list
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
             bigquery.ScalarQueryParameter("zone_id", "STRING", zone_id),
-            bigquery.ScalarQueryParameter("lower_hour", "INT64", lower_hour),
-            bigquery.ScalarQueryParameter("upper_hour", "INT64", upper_hour),
             bigquery.ScalarQueryParameter("lim", "INT64", limit),
         ]
     )
@@ -203,6 +155,7 @@ READINGS_SCHEMA = [
     bigquery.SchemaField("archetype", "STRING"),
     bigquery.SchemaField("timestamp", "TIMESTAMP"),
     bigquery.SchemaField("load_kw", "FLOAT64"),
+    bigquery.SchemaField("temperature_c", "FLOAT64"),
 ]
 
 
@@ -216,6 +169,7 @@ def ensure_load_readings_table() -> None:
 def load_readings_dataframe(df) -> int:
     client = get_client()
     ensure_load_readings_table()
+
     payload = df[
         ["household_id", "zone_id", "archetype", "timestamp", "load_kw"]
     ].copy()
@@ -229,7 +183,6 @@ def load_readings_dataframe(df) -> int:
 
 
 def get_zone_ids() -> list[str]:
-    """Returns all distinct zone_ids in BigQuery (sanity check / seed helper)."""
     client = get_client()
     query = f"SELECT DISTINCT zone_id FROM `{TABLE}` ORDER BY zone_id"
     rows = client.query(query).result()
@@ -237,13 +190,6 @@ def get_zone_ids() -> list[str]:
 
 
 def seed_households_from_bq(db_module) -> None:
-    """
-    One-time helper: reads distinct household_id + zone_id + archetype from
-    BigQuery and inserts them into the Postgres households table.
-
-    Call this once after applying schema.sql and loading BigQuery data.
-    Usage: from bq import seed_households_from_bq; import db; seed_households_from_bq(db)
-    """
     client = get_client()
     query = f"""
         SELECT DISTINCT household_id, zone_id, archetype
@@ -276,4 +222,4 @@ def seed_households_from_bq(db_module) -> None:
             ),
         )
         inserted += 1
-    print(f"Seeded {inserted} households from BigQuery → Postgres")
+    print(f"Seeded {inserted} households from BigQuery \u2192 Postgres")

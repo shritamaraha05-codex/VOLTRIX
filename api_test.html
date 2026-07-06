@@ -862,7 +862,7 @@ async function advanceSim() {
   }
 }
 
-/* ===== CHAT ===== */
+/* ===== CHAT (SSE streaming) ===== */
 async function sendChat() {
   const input = $('chatInput');
   const q = input.value.trim();
@@ -872,16 +872,50 @@ async function sendChat() {
   box.innerHTML += `<div class="chat-msg chat-user">${esc(q)}</div>`;
   input.value = '';
   box.scrollTop = box.scrollHeight;
-  box.innerHTML += `<div class="chat-msg chat-bot"><span class="spinner"></span></div>`;
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-msg chat-bot';
+  box.appendChild(bubble);
   box.scrollTop = box.scrollHeight;
   try {
-    const r = await api('/chat', { method: 'POST', body: JSON.stringify({ question: q, household_id: hh }) });
-    box.removeChild(box.lastChild);
-    box.innerHTML += `<div class="chat-msg chat-bot">${esc(r.answer)}</div>`;
-    box.scrollTop = box.scrollHeight;
+    const r = await fetch(BASE() + '/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+      body: JSON.stringify({ question: q, household_id: hh }),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(r.status + ' ' + t.slice(0, 300));
+    }
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let done = false;
+    while (!done) {
+      const chunk = await reader.read();
+      done = chunk.done;
+      buffer += decoder.decode(chunk.value || new Uint8Array(0), { stream: !done });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const match = line.match(/^data:\s?(.*)$/);
+        if (match) {
+          const data = match[1].trim();
+          if (data === '[DONE]') { done = true; break; }
+          if (data) {
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.token) {
+                bubble.textContent += parsed.token;
+                box.scrollTop = box.scrollHeight;
+              }
+            } catch(e) { /* skip unparseable */ }
+          }
+        }
+      }
+    }
   } catch(e) {
-    box.removeChild(box.lastChild);
-    box.innerHTML += `<div class="chat-msg chat-bot" style="color:var(--danger)">Error: ${esc(e.message)}</div>`;
+    bubble.textContent = 'Error: ' + e.message;
     box.scrollTop = box.scrollHeight;
   }
 }
