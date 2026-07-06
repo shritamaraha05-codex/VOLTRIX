@@ -14,7 +14,7 @@
 set -e  # exit on any error
 
 # ─── Config — edit these ──────────────────────────────────────────────────────
-PROJECT_ID="YOUR_PROJECT_ID"       # e.g. voltrix-app
+PROJECT_ID="voltrix-501307"       # e.g. voltrix-app
 SERVICE_NAME="voltrix-backend"
 REGION="us-central1"
 IMAGE="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
