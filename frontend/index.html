@@ -410,7 +410,7 @@ details summary:hover{color:var(--text)}
 
 <script>
 /* ===== UTILITIES ===== */
-const BASE = () => window.__BACKEND_URL || document.getElementById('baseUrl')?.value?.replace(/\/+$/,'') || 'http://localhost:8000';
+const BASE = () => window.__BACKEND_URL || document.getElementById('baseUrl')?.value?.replace(/\/+$/,'') || 'https://voltrix-backend-xbeezmmecq-uc.a.run.app';
 const $ = id => document.getElementById(id);
 const esc = s => s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const formatTime = s => s ? new Date(s).toLocaleString() : '—';
