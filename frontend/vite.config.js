@@ -5,15 +5,15 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/health': 'http://localhost:8000',
-      '/zones': 'http://localhost:8000',
-      '/stress-events': 'http://localhost:8000',
-      '/recommendations': 'http://localhost:8000',
-      '/simulation': 'http://localhost:8000',
-      '/simulate': 'http://localhost:8000',
-      '/chat': 'http://localhost:8000',
-      '/ingest': 'http://localhost:8000',
-      '/admin': 'http://localhost:8000'
+      '/health': 'https://voltrix-backend-xbeezmmecq-uc.a.run.app',
+      '/zones': 'https://voltrix-backend-xbeezmmecq-uc.a.run.app',
+      '/stress-events': 'https://voltrix-backend-xbeezmmecq-uc.a.run.app',
+      '/recommendations': 'https://voltrix-backend-xbeezmmecq-uc.a.run.app',
+      '/simulation': 'https://voltrix-backend-xbeezmmecq-uc.a.run.app',
+      '/simulate': 'https://voltrix-backend-xbeezmmecq-uc.a.run.app',
+      '/chat': 'https://voltrix-backend-xbeezmmecq-uc.a.run.app',
+      '/ingest': 'https://voltrix-backend-xbeezmmecq-uc.a.run.app',
+      '/admin': 'https://voltrix-backend-xbeezmmecq-uc.a.run.app'
     }
   },
   build: {
